@@ -6,6 +6,8 @@
 #include <string.h>
 #include <json.h>
 #define C_AZUL 1
+#define C_ROJO 2
+#define C_BLANCO 3
 
 struct Task {
   char* task;
@@ -56,7 +58,8 @@ void UI_free(struct UI* ui) {
 }
 
 void main_ui(struct UI* ui) {
-  waddstr(ui->main, "Hello");
+  int y,x; getmaxyx(ui->main, y, x);
+  mvwaddstr(ui->main, 0, x/2-2, "Etodo");
   wrefresh(ui->main);
 }
 
@@ -100,18 +103,21 @@ int main() {
   struct json_object* data = data_loader();
   // draw interface
   WINDOW* stdscr = initscr();
+  start_color();
   use_default_colors();
   keypad(stdscr,1);
+  curs_set(0);
   init_pair(C_AZUL, 15, 33);
+  init_pair(C_ROJO, 15, 124);
   int y,x; getmaxyx(stdscr,y,x);
-  WINDOW* taskwin = newwin(y,x, 0, 0);
+  WINDOW* taskwin = newwin(y-1,x, 0, 0);
   wrefresh(taskwin);
-  WINDOW* optwin = NULL;
+  WINDOW* optwin = newwin(1,x,y-1,0);
+  wrefresh(optwin);
 
   WINDOW* winarr[2] = {taskwin, optwin};
   struct UI ui = UI_new(winarr,2,taskwin,1);
   UI_register(&ui, main_ui);
-  UI_bkgd(&ui, C_AZUL);
   UI_draw(&ui);
   // handle key input
   wgetch(ui.main);
