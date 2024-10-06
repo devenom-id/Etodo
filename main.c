@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <json.h>
+#define C_AZUL 1
 
 struct Task {
   char* task;
@@ -30,6 +31,34 @@ struct Device {
 struct Device* Device_new();
 int Device_download();
 int Device_upload();
+
+struct UI {
+  WINDOW** windows;
+  WINDOW* main;
+  int state;
+  char winarr_length;
+  void (*fdraw)(struct UI*);
+};
+struct UI UI_new(WINDOW** windows, char winarr_length, WINDOW* main, int state) {
+  struct UI ui = {windows, main, state, winarr_length}; return ui;
+}
+void UI_register(struct UI* ui, void (*callback)(struct UI*)) {
+  ui->fdraw = callback;
+}
+void UI_draw(struct UI* ui) { ui->fdraw(ui); }
+void UI_bkgd(struct UI* ui, short color) { wbkgd(ui->main, COLOR_PAIR(color)); wrefresh(ui->main); }
+void UI_set_main(struct UI* ui, WINDOW* win) { ui->main = win; }
+void UI_set_state(struct UI* ui, int state) { ui->state = state; }
+void UI_free(struct UI* ui) {
+  for (int i=0; i<ui->winarr_length; i++) {
+    delwin(ui->windows[i]);
+  }
+}
+
+void main_ui(struct UI* ui) {
+  waddstr(ui->main, "Hello");
+  wrefresh(ui->main);
+}
 
 struct json_object* data_loader() {
   char* home = strdup(getenv("HOME"));
@@ -68,10 +97,24 @@ loader_out:
 }
 
 int main() {
-  // check dirs and file on $HOME/.local/share/etodo/data.json
   struct json_object* data = data_loader();
-  // load file or create an empty one
   // draw interface
+  WINDOW* stdscr = initscr();
+  use_default_colors();
+  keypad(stdscr,1);
+  init_pair(C_AZUL, 15, 33);
+  int y,x; getmaxyx(stdscr,y,x);
+  WINDOW* taskwin = newwin(y,x, 0, 0);
+  wrefresh(taskwin);
+  WINDOW* optwin = NULL;
+
+  WINDOW* winarr[2] = {taskwin, optwin};
+  struct UI ui = UI_new(winarr,2,taskwin,1);
+  UI_register(&ui, main_ui);
+  UI_bkgd(&ui, C_AZUL);
+  UI_draw(&ui);
   // handle key input
+  wgetch(ui.main);
+  endwin();
   return 0;
 }
