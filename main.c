@@ -89,12 +89,20 @@ void UI_free(struct UI* ui) {
 }
 
 void main_ui(struct UI* ui) {
-  int y,x; getmaxyx(ui->main, y, x);
-  wattron(ui->main, COLOR_PAIR(C_BLANCO));
-    mvwaddstr(ui->main, 0, x/2-2, " Etodo ");
-  wattroff(ui->main, COLOR_PAIR(C_BLANCO));
+  int y,x; getmaxyx(stdscr, y, x);
+  attron(COLOR_PAIR(C_BLANCO));
+    mvaddstr(0, x/2-2, " Etodo ");
+  attroff(COLOR_PAIR(C_BLANCO));
+  refresh();
 
   // write List
+  struct List* list = ui->cbdata;
+  for (int i=0; i<list->size; i++) {
+    // TODO: IF DONE, SHOW HOUR OF COMPLETION
+    waddstr(ui->main, list->tasks[i].state ? " (x) " : " ( ) ");
+    waddstr(ui->main, list->tasks[i].task);
+    waddch(ui->main, '\n');
+  }
 
   wrefresh(ui->main);
 }
@@ -168,10 +176,6 @@ struct List list_from_json(struct json_object* jobj) {
 int main() {
   struct json_object* data = data_loader();
   struct List list = list_from_json(data);
-  for (int i=0; i<list.size; i++) {
-    printf("%s: %d\n", list.tasks[i].task, list.tasks[i].state);
-  }
-  return 0;
   // draw interface
   WINDOW* stdscr = initscr();
   start_color();
@@ -182,7 +186,7 @@ int main() {
   init_pair(C_ROJO, 15, 124);
   init_pair(C_BLANCO, 0, 15);
   int y,x; getmaxyx(stdscr,y,x);
-  WINDOW* taskwin = newwin(y-1,x, 0, 0);
+  WINDOW* taskwin = newwin(y-2,x,1,0);
   wrefresh(taskwin);
   WINDOW* optwin = newwin(1,x,y-1,0);
   wrefresh(optwin);
@@ -193,6 +197,7 @@ int main() {
   UI_set_state(&ui, 0, &list);
   UI_draw(&ui);
   // handle key input
+  // TODO: handle each event + terminal resize
   wgetch(ui.main);
   endwin();
   return 0;
