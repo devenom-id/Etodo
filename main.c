@@ -12,19 +12,32 @@
 struct Task {
   char* task;
   int state;
-  int time;
+  char* time;
 };
-struct Task* Task_new();  // zero the task
-void Task_edit(struct Task* task, char* taskname, int state, int time);
-void Task_mark(struct Task* task, int state);
+struct Task Task_new(char* name, int state, char* time) { struct Task task = {name, state, time}; return task; }
+void Task_edit(struct Task* task, char* taskname, int state, char* time) {task->task=taskname;task->state=state;task->time=time;}
+void Task_mark(struct Task* task) {task->state=!task->state;}
 
 struct List {
   struct Task* tasks;
   int size;
 };
-struct List* List_new();  // zero the list
-void List_add(struct List* list, char* task, int state, int time);
-void List_delete(struct List* list, struct Task* task);
+struct List List_new() { struct List list = {NULL, 0}; return list; }
+void List_add(struct List* list, struct Task task) {
+  for (int i=0; i<list->size; i++) {
+    if (!strcmp(list->tasks[i].task,task.task)) return;
+  }
+  list->size++;
+  list->tasks = realloc(list->tasks, sizeof(struct Task)*list->size);
+  list->tasks[list->size-1] = task;
+}
+void List_delete(struct List* list, int n) {
+  for (int i=n+1; i<list->size; i++) {
+    list->tasks[i-1] = list->tasks[i];
+  }
+  list->size--;
+  list->tasks = realloc(list->tasks, sizeof(struct Task)*list->size);
+}
 
 struct Device {
   char* ip;
@@ -34,32 +47,55 @@ struct Device* Device_new();
 int Device_download();
 int Device_upload();
 
+struct UI;
+typedef void (*ui_writer)(struct UI*);
+
 struct UI {
   WINDOW** windows;
   WINDOW* main;
+  ui_writer *fdraw;
   int state;
   char winarr_length;
-  void (*fdraw)(struct UI*);
+  char fdraw_length;
+  void* cbdata;
 };
-struct UI UI_new(WINDOW** windows, char winarr_length, WINDOW* main, int state) {
-  struct UI ui = {windows, main, state, winarr_length}; return ui;
+struct UI UI_new(WINDOW** windows, char winarr_length, WINDOW* main) {
+  struct UI ui = {windows, main, NULL, -1, winarr_length, 0}; return ui;
 }
-void UI_register(struct UI* ui, void (*callback)(struct UI*)) {
-  ui->fdraw = callback;
+void UI_register(struct UI* ui, ui_writer callback) {
+  ui->fdraw_length++;
+  ui->fdraw = realloc(ui->fdraw, sizeof(ui_writer)*ui->fdraw_length);
+  ui->fdraw[ui->fdraw_length-1] = callback;
 }
-void UI_draw(struct UI* ui) { ui->fdraw(ui); }
+void UI_set_state(struct UI* ui, int state, void* cbdata) {
+  ui->state = state; ui->cbdata = cbdata;
+}
+void UI_draw(struct UI* ui) { ui->fdraw[ui->state](ui); }
+void UI_bring_up_all(struct UI* ui) {
+  for (int i=0; i<ui->winarr_length; i++) {
+    if (ui->windows[i] == ui->main) continue;
+    touchwin(ui->windows[i]); wrefresh(ui->windows[i]);
+  }
+  touchwin(ui->main); wrefresh(ui->main);
+}
+void UI_bring_up(struct UI* ui) {
+  touchwin(ui->main); wrefresh(ui->main);
+}
 void UI_bkgd(struct UI* ui, short color) { wbkgd(ui->main, COLOR_PAIR(color)); wrefresh(ui->main); }
 void UI_set_main(struct UI* ui, WINDOW* win) { ui->main = win; }
-void UI_set_state(struct UI* ui, int state) { ui->state = state; }
 void UI_free(struct UI* ui) {
-  for (int i=0; i<ui->winarr_length; i++) {
-    delwin(ui->windows[i]);
-  }
+  for (int i=0; i<ui->winarr_length; i++) { delwin(ui->windows[i]); }
+  free(ui->fdraw);
 }
 
 void main_ui(struct UI* ui) {
   int y,x; getmaxyx(ui->main, y, x);
-  mvwaddstr(ui->main, 0, x/2-2, "Etodo");
+  wattron(ui->main, COLOR_PAIR(C_BLANCO));
+    mvwaddstr(ui->main, 0, x/2-2, " Etodo ");
+  wattroff(ui->main, COLOR_PAIR(C_BLANCO));
+
+  // write List
+
   wrefresh(ui->main);
 }
 
@@ -99,8 +135,43 @@ loader_out:
   return jobj;
 }
 
+void save_list(struct List* list) {
+  char* home = strdup(getenv("HOME"));
+  short size = strlen(home)+29;
+  home = realloc(home, size+1);
+  strcat(home, "/.local/share/etodo/data.json");
+  FILE* file = fopen(home, "w");
+  struct json_object* jobj = json_object_new_object();
+  for (int i=0; i<list->size; i++) {
+    struct json_object* arr = json_object_new_array();
+    json_object_array_add(arr, json_object_new_int(list->tasks[i].state));
+    json_object_array_add(arr, json_object_new_string(list->tasks[i].time));
+    json_object_object_add(jobj, list->tasks[i].task, arr);
+  }
+  fputs(json_object_to_json_string(jobj), file);
+  json_object_put(jobj);
+  fclose(file);
+  free(home);
+}
+
+struct List list_from_json(struct json_object* jobj) {
+  struct List lista = List_new();
+  json_object_object_foreach(jobj, key, val) {
+      struct Task task = Task_new(key, 0, NULL);
+      task.state = json_object_get_int(json_object_array_get_idx(val, 0));
+      task.time = json_object_get_string(json_object_array_get_idx(val, 1));
+      List_add(&lista, task);
+  }
+  return lista;
+}
+
 int main() {
   struct json_object* data = data_loader();
+  struct List list = list_from_json(data);
+  for (int i=0; i<list.size; i++) {
+    printf("%s: %d\n", list.tasks[i].task, list.tasks[i].state);
+  }
+  return 0;
   // draw interface
   WINDOW* stdscr = initscr();
   start_color();
@@ -109,6 +180,7 @@ int main() {
   curs_set(0);
   init_pair(C_AZUL, 15, 33);
   init_pair(C_ROJO, 15, 124);
+  init_pair(C_BLANCO, 0, 15);
   int y,x; getmaxyx(stdscr,y,x);
   WINDOW* taskwin = newwin(y-1,x, 0, 0);
   wrefresh(taskwin);
@@ -116,8 +188,9 @@ int main() {
   wrefresh(optwin);
 
   WINDOW* winarr[2] = {taskwin, optwin};
-  struct UI ui = UI_new(winarr,2,taskwin,1);
+  struct UI ui = UI_new(winarr,2,taskwin);
   UI_register(&ui, main_ui);
+  UI_set_state(&ui, 0, &list);
   UI_draw(&ui);
   // handle key input
   wgetch(ui.main);
