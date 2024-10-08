@@ -91,7 +91,7 @@ void UI_free(struct UI* ui) {
 void main_ui(struct UI* ui) {
   int y,x; getmaxyx(stdscr, y, x);
   attron(COLOR_PAIR(C_BLANCO));
-    mvaddstr(0, x/2-2, " Etodo ");
+    mvaddstr(0, x/2-3, " Etodo ");
   attroff(COLOR_PAIR(C_BLANCO));
   refresh();
 
@@ -104,7 +104,29 @@ void main_ui(struct UI* ui) {
     waddch(ui->main, '\n');
   }
 
+  WINDOW* optwin = ui->windows[1];
+  char* optarr[][2] = {
+    {" a ", " Add"},
+    {" e ", " Edit"},
+    {" D ", " Delete"},
+    {" o ", " Move up"},
+    {" l ", " Move down"},
+    {" S ", " Sync"}
+  };
+  int n=0;
+  int spacing=2;
+  for (int i=0; i<6; i++) {
+    int ssize = strlen(optarr[i][1])+3;
+    if (n+ssize > x) break;
+    wattron(optwin, COLOR_PAIR(C_BLANCO));
+    mvwaddstr(optwin, 0, n, optarr[i][0]);
+    wattroff(optwin, COLOR_PAIR(C_BLANCO));
+    waddstr(optwin, optarr[i][1]);
+    n+=ssize+spacing;
+  }
+
   wrefresh(ui->main);
+  wrefresh(ui->windows[1]);
 }
 
 struct json_object* data_loader() {
