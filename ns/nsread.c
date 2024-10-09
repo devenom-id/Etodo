@@ -17,6 +17,8 @@ void nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
       case 27:
         return;
       case 263:
+      case 127:
+        if (!e) break;
         for (int i=e; i<length+1; i++) {
           (*buff)[i-1] = (*buff)[i];
         }
@@ -24,10 +26,22 @@ void nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
         length--;
         p--; e--;
         wmove(win, y, x+p);
-        for (int i=e; i<length; i++) { waddch(win, (*buff)[i]); }
+        wclrtoeol(win);
+        wmove(win, y, x+p);
+        for (int i=0; e<length && i<width-p; i++) {
+          waddch(win, (*buff)[e+i]);
+        }
         break;
       case KEY_LEFT:
+        if (!e) break;
+        e--; p--;
+        wmove(win, y, x+p);
+        break;
       case KEY_RIGHT:
+        if (e>=length) break;
+        e++; p++;
+        wmove(win, y, x+p);
+        break;
       default:
         if (isgraph(ch) || ch==32) {
           *buff = realloc(*buff, length+2);
@@ -45,8 +59,12 @@ int main() {
   start_color();
   use_default_colors();
   noecho();
-  keypad(stdscr, 1);
+  WINDOW* win = newwin(1,8,0,4);
+  keypad(win, 1);
+  init_pair(1, 160, 15);
+  wbkgd(win, COLOR_PAIR(C_BLANCO));
   char* buff = NULL;
-  nsread(stdscr, &buff, 0, 4, 7, 15);
+  nsread(win, &buff, 0, 0, 7, 15);
   endwin();
+  printf("buff: %s\n", buff);
 }
