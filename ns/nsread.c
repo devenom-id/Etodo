@@ -58,9 +58,10 @@ void nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
           wmove(win, y, x);
           wclrtoeol(win);
           wmove(win, y, x);
+          fprintf(F, "width: %d\np: %d\ne: %d\n", width, p, e);
           e++;
           for (int i=e-p; i<width-p+e; i++) {
-            waddch(win, (*buff)[e+i]);
+            waddch(win, (*buff)[i]);
           }
           length++;
           /*e++*/
