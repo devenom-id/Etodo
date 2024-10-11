@@ -20,11 +20,13 @@ void nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
         return;
       case 263:
       case 127:
+        // FIXME: No scroll, e defines how much backspace allowed when has to be p
         if (!e) break;
         for (int i=e; i<length+1; i++) {
           (*buff)[i-1] = (*buff)[i];
         }
         *buff = realloc(*buff, length);
+        // -- mod starts here --
         length--;
         p--; e--;
         wmove(win, y, x+p);
@@ -36,11 +38,13 @@ void nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
         wmove(win, y, x+p);
         break;
       case KEY_LEFT:
+        // TODO: Scroll left
         if (!e) break;
         e--; p--;
         wmove(win, y, x+p);
         break;
       case KEY_RIGHT:
+        // TODO: Scroll right
         if (e>=length) break;
         e++; p++;
         wmove(win, y, x+p);
@@ -53,18 +57,16 @@ void nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
           (*buff)[i] = (*buff)[i-1];
         }
         (*buff)[e] = ch;
-        if (p==width-1) {
-          // TODO: Arreglar esto para que no salgan '@'
+        if (p==width) {
           wmove(win, y, x);
           wclrtoeol(win);
           wmove(win, y, x);
-          fprintf(F, "width: %d\np: %d\ne: %d\n", width, p, e);
+          fprintf(F, "width: %d\np: %d\ne: %d\n", width, p, e);  // TODO: Remove logging
           e++;
           for (int i=e-p; i<width-p+e; i++) {
             waddch(win, (*buff)[i]);
           }
           length++;
-          /*e++*/
         }
         else {
           wmove(win, y, x+p);
