@@ -4,8 +4,9 @@
 #include <string.h>
 #include <ctype.h>
 #define C_BLANCO 1
+#define log fprintf
 
-FILE* F;
+FILE* F;  // TODO: Remove logging
 
 void nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
   int length = *buff ? strlen(*buff) : 0;
@@ -27,14 +28,28 @@ void nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
         }
         *buff = realloc(*buff, length);
         // -- mod starts here --
-        length--;
-        p--; e--;
-        wmove(win, y, x+p);
-        wclrtoeol(win);
-        wmove(win, y, x+p);
-        for (int i=0; e+i<length && i<width-p; i++) {
-          waddch(win, (*buff)[e+i]);
+        if (!p) {
+          wmove(win, y, x);
+          wclrtoeol(win);
+          wmove(win, y, x);
+          log(F, "\tBackspace\nwidth: %d\np: %d\ne: %d\n", width, p, e);
+          e--;
+          for (int i=e-p; i<width-p+e; i++) {
+            waddch(win, (*buff)[i]);
+          }
+          length--;
         }
+        else {
+          length--;
+          p--; e--;
+          wmove(win, y, x+p);
+          wclrtoeol(win);
+          wmove(win, y, x+p);
+          for (int i=0; e+i<length && i<width-p; i++) {
+            waddch(win, (*buff)[e+i]);
+          }
+        }
+        // -- ends here --
         wmove(win, y, x+p);
         break;
       case KEY_LEFT:
@@ -61,7 +76,7 @@ void nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
           wmove(win, y, x);
           wclrtoeol(win);
           wmove(win, y, x);
-          fprintf(F, "width: %d\np: %d\ne: %d\n", width, p, e);  // TODO: Remove logging
+          log(F, "width: %d\np: %d\ne: %d\n", width, p, e);
           e++;
           for (int i=e-p; i<width-p+e; i++) {
             waddch(win, (*buff)[i]);
