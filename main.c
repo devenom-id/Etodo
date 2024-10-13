@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <json.h>
+#include "nsread.h"
 #define C_AZUL 1
 #define C_ROJO 2
 #define C_BLANCO 3
