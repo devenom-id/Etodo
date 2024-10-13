@@ -51,21 +51,31 @@ void nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
         wmove(win, y, x+p);
         break;
       case KEY_LEFT:
-        // FIXME: Fix scroll, needs to press twice to scroll
         if (!e) break;
         if (!p) {
-          for (int i=e; i<width-p+e; i++) {
+          wmove(win, y, x);
+          wclrtoeol(win);
+          wmove(win, y, x);
+          e--;
+          for (int i=e-p; i<width-p+e; i++) {
             waddch(win, (*buff)[i]);
           }
-          e--;
         }
         else {e--; p--;}
         wmove(win, y, x+p);
         break;
       case KEY_RIGHT:
-        // TODO: Scroll right
         if (e>=length) break;
-        e++; p++;
+        if (p==width) {
+          wmove(win, y, x);
+          wclrtoeol(win);
+          wmove(win, y, x);
+          e++;
+          for (int i=e-p; i<width-p+e; i++) {
+            waddch(win, (*buff)[i]);
+          }
+        }
+        else {e++; p++;}
         wmove(win, y, x+p);
         break;
       default:
