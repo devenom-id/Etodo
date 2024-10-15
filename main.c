@@ -221,7 +221,19 @@ int main() {
   UI_draw(&ui);
   // handle key input
   // TODO: handle each event + terminal resize
-  wgetch(ui.main);
-  endwin();
-  return 0;
+  while (1) {
+    int ch = wgetch(ui.main);
+    switch (ch) {
+      case 'a':
+      case 'D':
+      case 'r':
+      case 'o':
+      case 'l':
+      case 10:
+        break;
+      case 27:
+        endwin();
+        return 0;
+    }
+  }
 }
