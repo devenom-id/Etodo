@@ -10,6 +10,7 @@
 #define C_ROJO 2
 #define C_BLANCO 3
 
+typedef callback;
 struct Task {
   char* task;
   int state;
@@ -204,6 +205,7 @@ int main() {
   start_color();
   use_default_colors();
   keypad(stdscr,1);
+  noecho();
   curs_set(0);
   init_pair(C_AZUL, 15, 33);
   init_pair(C_ROJO, 15, 124);
@@ -224,16 +226,20 @@ int main() {
   while (1) {
     int ch = wgetch(ui.main);
     switch (ch) {
-      case 'a':
-      case 'D':
-      case 'r':
-      case 'o':
-      case 'l':
-      case 10:
+      case 'a': // TODO: Add
+      case 'D': // TODO: Delete
+      case 'r': // TODO: Rename
+      case 'o': // TODO: Reorder up
+      case 'l': // TODO: Reorder down
+      case 10: // TODO: Mark task
         break;
       case 27:
         endwin();
         return 0;
     }
   }
+}
+
+int menu(WINDOW* win, char** opts, func ) {
+  ;
 }
