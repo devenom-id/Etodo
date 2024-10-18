@@ -10,7 +10,7 @@
 #define C_ROJO 2
 #define C_BLANCO 3
 
-typedef callback;
+//typedef callback;
 struct Task {
   char* task;
   int state;
@@ -90,6 +90,39 @@ void UI_free(struct UI* ui) {
   free(ui->fdraw);
 }
 
+void task_draw(WINDOW* win, struct List* list, int* p, int* e, int n) {
+  int y, x; getmaxyx(win, y, x);
+  if (n==0) {
+    int stop = y-1<=list->size ? y-1 : list->size;
+    for (int i=0; i<stop; i++) {
+      // TODO: IF DONE, SHOW HOUR OF COMPLETION
+      waddstr(win, list->tasks[i].state ? " (x) " : " ( ) ");
+      waddstr(win, list->tasks[i].task);
+      waddch(win, '\n');
+    }
+    wattron(win, COLOR_PAIR(C_BLANCO));
+    mvwaddstr(win, 0, 5, list->tasks[0].task);
+    wattroff(win, COLOR_PAIR(C_BLANCO));
+    wrefresh(win);
+  }
+  else if (n==1){
+    mvwaddstr(win, *p, 5, list->tasks[*e].task);
+    (*p)++; (*e)++;
+    wattron(win, COLOR_PAIR(C_BLANCO));
+    mvwaddstr(win, *p, 5, list->tasks[*e].task);
+    wattroff(win, COLOR_PAIR(C_BLANCO));
+    wrefresh(win);
+  }
+  else {
+    mvwaddstr(win, *p, 5, list->tasks[*e].task);
+    (*p)--; (*e)--;
+    wattron(win, COLOR_PAIR(C_BLANCO));
+    mvwaddstr(win, *p, 5, list->tasks[*e].task);
+    wattroff(win, COLOR_PAIR(C_BLANCO));
+    wrefresh(win);
+  }
+}
+
 void main_ui(struct UI* ui) {
   int y,x; getmaxyx(stdscr, y, x);
   attron(COLOR_PAIR(C_BLANCO));
@@ -98,13 +131,7 @@ void main_ui(struct UI* ui) {
   refresh();
 
   // write List
-  struct List* list = ui->cbdata;
-  for (int i=0; i<list->size; i++) {
-    // TODO: IF DONE, SHOW HOUR OF COMPLETION
-    waddstr(ui->main, list->tasks[i].state ? " (x) " : " ( ) ");
-    waddstr(ui->main, list->tasks[i].task);
-    waddch(ui->main, '\n');
-  }
+  task_draw(ui->main, ui->cbdata, NULL, NULL, 0);  // draw all
 
   WINDOW* optwin = ui->windows[1];
   char* optarr[][2] = {
@@ -197,6 +224,54 @@ struct List list_from_json(struct json_object* jobj) {
   return lista;
 }
 
+void op_add_task() {
+}
+void op_del_task() {
+}
+void op_ren_task() {
+}
+void op_reorder_up() {
+}
+void op_reorder_down() {
+}
+void op_mark_task() {
+}
+
+int task_nav(struct UI* ui) {
+  int p = 0;
+  int e = 0;
+  struct List* list = ui->cbdata;
+  int ch = wgetch(ui->main);
+  switch (ch) {
+    case KEY_DOWN:
+      task_draw(ui->main, list, &p, &e, 1);
+      break;
+    case KEY_UP:
+      task_draw(ui->main, list, &p, &e, -1);
+      break;
+    case 'a': // TODO: Add
+      op_add_task();
+      break;
+    case 'D': // TODO: Delete
+      op_del_task();
+      break;
+    case 'r': // TODO: Rename
+      op_ren_task();
+      break;
+    case 'o': // TODO: Reorder up
+      break;
+    case 'l': // TODO: Reorder down
+      op_reorder_down();
+      break;
+    case 10: // TODO: Mark task
+      op_mark_task();
+      break;
+    case 27:
+      return 0;
+  }
+  return 1;
+}
+
 int main() {
   struct json_object* data = data_loader();
   struct List list = list_from_json(data);
@@ -204,7 +279,6 @@ int main() {
   WINDOW* stdscr = initscr();
   start_color();
   use_default_colors();
-  keypad(stdscr,1);
   noecho();
   curs_set(0);
   init_pair(C_AZUL, 15, 33);
@@ -212,6 +286,8 @@ int main() {
   init_pair(C_BLANCO, 0, 15);
   int y,x; getmaxyx(stdscr,y,x);
   WINDOW* taskwin = newwin(y-2,x,1,0);
+  keypad(taskwin, 1);
+  scrollok(taskwin, 1);
   wrefresh(taskwin);
   WINDOW* optwin = newwin(1,x,y-1,0);
   wrefresh(optwin);
@@ -224,22 +300,9 @@ int main() {
   // handle key input
   // TODO: handle each event + terminal resize
   while (1) {
-    int ch = wgetch(ui.main);
-    switch (ch) {
-      case 'a': // TODO: Add
-      case 'D': // TODO: Delete
-      case 'r': // TODO: Rename
-      case 'o': // TODO: Reorder up
-      case 'l': // TODO: Reorder down
-      case 10: // TODO: Mark task
-        break;
-      case 27:
-        endwin();
-        return 0;
+    if (!task_nav(&ui)) {
+      endwin();
+      return 0;
     }
   }
-}
-
-int menu(WINDOW* win, char** opts, func ) {
-  ;
 }
