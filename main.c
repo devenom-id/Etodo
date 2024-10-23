@@ -90,6 +90,7 @@ void UI_free(struct UI* ui) {
   free(ui->fdraw);
 }
 
+FILE* L;
 void task_draw(WINDOW* win, struct List* list, int* p, int* e, int n) {
   int y, x; getmaxyx(win, y, x);
   if (n==0) {
@@ -107,7 +108,9 @@ void task_draw(WINDOW* win, struct List* list, int* p, int* e, int n) {
   }
   else if (n==1){
     mvwaddstr(win, *p, 5, list->tasks[*e].task);
-    (*p)++; (*e)++;
+    (*p)++;
+    (*e)++;
+    fprintf(L, "down: p: %d, e: %d\n", *p, *e);
     wattron(win, COLOR_PAIR(C_BLANCO));
     mvwaddstr(win, *p, 5, list->tasks[*e].task);
     wattroff(win, COLOR_PAIR(C_BLANCO));
@@ -115,7 +118,9 @@ void task_draw(WINDOW* win, struct List* list, int* p, int* e, int n) {
   }
   else {
     mvwaddstr(win, *p, 5, list->tasks[*e].task);
-    (*p)--; (*e)--;
+    (*p)--;
+    (*e)--;
+    fprintf(L, "up: p: %d, e: %d\n", *p, *e);
     wattron(win, COLOR_PAIR(C_BLANCO));
     mvwaddstr(win, *p, 5, list->tasks[*e].task);
     wattroff(win, COLOR_PAIR(C_BLANCO));
@@ -185,7 +190,7 @@ loader_out:
     file = fopen(home, "r");
   }
   struct stat st; stat(home, &st);
-  char* buffer = malloc(st.st_size);
+  char* buffer = malloc(st.st_size+1); buffer[st.st_size]=0;
   fread(buffer, 1, st.st_size, file);
   struct json_object* jobj = json_tokener_parse(buffer);
   fclose(file);
@@ -224,55 +229,72 @@ struct List list_from_json(struct json_object* jobj) {
   return lista;
 }
 
-void op_add_task() {
+void op_add_task(struct UI* ui, int p, int e) {
+  struct List* list = ui->cbdata;
+  int y; int x; getmaxyx(stdscr, y, x);
+  WINDOW* win = newwin(5,20, y/2-2, x/2-10);
+  mvwaddstr(win, 0, 10-1, "New");
+  wrefresh(win);
+  wgetch(win);
+  delwin(win);
+  UI_draw(ui);
 }
-void op_del_task() {
+void op_del_task(struct UI* ui) {
+  struct List* list = ui->cbdata;
 }
-void op_ren_task() {
+void op_ren_task(struct UI* ui) {
+  struct List* list = ui->cbdata;
 }
-void op_reorder_up() {
+void op_reorder_up(struct UI* ui) {
+  struct List* list = ui->cbdata;
 }
-void op_reorder_down() {
+void op_reorder_down(struct UI* ui) {
+  struct List* list = ui->cbdata;
 }
-void op_mark_task() {
+void op_mark_task(struct UI* ui) {
+  struct List* list = ui->cbdata;
 }
 
 int task_nav(struct UI* ui) {
   int p = 0;
   int e = 0;
   struct List* list = ui->cbdata;
-  int ch = wgetch(ui->main);
-  switch (ch) {
-    case KEY_DOWN:
-      task_draw(ui->main, list, &p, &e, 1);
-      break;
-    case KEY_UP:
-      task_draw(ui->main, list, &p, &e, -1);
-      break;
-    case 'a': // TODO: Add
-      op_add_task();
-      break;
-    case 'D': // TODO: Delete
-      op_del_task();
-      break;
-    case 'r': // TODO: Rename
-      op_ren_task();
-      break;
-    case 'o': // TODO: Reorder up
-      break;
-    case 'l': // TODO: Reorder down
-      op_reorder_down();
-      break;
-    case 10: // TODO: Mark task
-      op_mark_task();
-      break;
-    case 27:
-      return 0;
+  while (1) {
+    int ch = wgetch(ui->main);
+    switch (ch) {
+      case KEY_DOWN:
+        if (e==list->size-1) break;
+        task_draw(ui->main, list, &p, &e, 1);
+        break;
+      case KEY_UP:
+        if (!e) break;
+        task_draw(ui->main, list, &p, &e, -1);
+        break;
+      case 'a': // TODO: Add
+        op_add_task(ui, p, e);
+        break;
+      case 'D': // TODO: Delete
+        op_del_task(ui);
+        break;
+      case 'r': // TODO: Rename
+        op_ren_task(ui);
+        break;
+      case 'o': // TODO: Reorder up
+        break;
+      case 'l': // TODO: Reorder down
+        op_reorder_down(ui);
+        break;
+      case 10: // TODO: Mark task
+        op_mark_task(ui);
+        break;
+      case 27:
+        return 1;
+    }
   }
-  return 1;
 }
 
 int main() {
+  L=fopen("log", "w");
   struct json_object* data = data_loader();
   struct List list = list_from_json(data);
   // draw interface
@@ -299,10 +321,8 @@ int main() {
   UI_draw(&ui);
   // handle key input
   // TODO: handle each event + terminal resize
-  while (1) {
-    if (!task_nav(&ui)) {
-      endwin();
-      return 0;
-    }
-  }
+  task_nav(&ui);
+  endwin();
+  fclose(L);
+  return 0;
 }
