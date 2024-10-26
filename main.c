@@ -90,7 +90,6 @@ void UI_free(struct UI* ui) {
   free(ui->fdraw);
 }
 
-FILE* L;
 void task_draw(WINDOW* win, struct List* list, int* p, int* e, int n) {
   int y, x; getmaxyx(win, y, x);
   if (n==0) {
@@ -110,7 +109,6 @@ void task_draw(WINDOW* win, struct List* list, int* p, int* e, int n) {
     mvwaddstr(win, *p, 5, list->tasks[*e].task);
     (*p)++;
     (*e)++;
-    fprintf(L, "down: p: %d, e: %d\n", *p, *e);
     wattron(win, COLOR_PAIR(C_BLANCO));
     mvwaddstr(win, *p, 5, list->tasks[*e].task);
     wattroff(win, COLOR_PAIR(C_BLANCO));
@@ -120,7 +118,6 @@ void task_draw(WINDOW* win, struct List* list, int* p, int* e, int n) {
     mvwaddstr(win, *p, 5, list->tasks[*e].task);
     (*p)--;
     (*e)--;
-    fprintf(L, "up: p: %d, e: %d\n", *p, *e);
     wattron(win, COLOR_PAIR(C_BLANCO));
     mvwaddstr(win, *p, 5, list->tasks[*e].task);
     wattroff(win, COLOR_PAIR(C_BLANCO));
@@ -229,15 +226,105 @@ struct List list_from_json(struct json_object* jobj) {
   return lista;
 }
 
+void time_edit(WINDOW* win, char* time) {
+  int p=0;
+  while (1) {
+    int ch = wgetch(win);
+    switch (ch) {
+      case KEY_LEFT:
+        break;
+      case KEY_RIGHT:
+        break;
+      case 10:
+        break;
+      case 27:
+        return;
+    }
+  }
+}
+
+void mark_done(WINDOW* win, int* done) {
+  mvwaddstr(win, 3, 16, (*done) ? "x" : " ");
+  *done = !(*done);
+}
+
+int addmenu_nav(WINDOW* win, int opts[3][3]) {
+  char buffer[21] = {0};
+  char* taskname = NULL;
+  int done = 0;
+  char* tasktime = strdup("00:00");
+  wattron(win, COLOR_PAIR(C_BLANCO));
+  mvwinnstr(win, opts[0][0], opts[0][1], buffer, opts[0][2]);
+  mvwaddstr(win, opts[0][0], opts[0][1], buffer);
+  wattroff(win, COLOR_PAIR(C_BLANCO));
+  int e=0;
+  while (1) {
+    int ch = wgetch(win);
+    switch (ch) {
+      case KEY_DOWN:
+        if (e==3) continue;
+        mvwinnstr(win, opts[e][0], opts[e][1], buffer, opts[e][2]);
+        mvwaddstr(win, opts[e][0], opts[e][1], buffer);
+        wattron(win, COLOR_PAIR(C_BLANCO));
+        mvwinnstr(win, opts[e+1][0], opts[e+1][1], buffer, opts[e+1][2]);
+        mvwaddstr(win, opts[e+1][0], opts[e+1][1], buffer);
+        wattroff(win, COLOR_PAIR(C_BLANCO));
+        e++;
+        break;
+      case KEY_UP:
+        if (!e) continue;
+        mvwinnstr(win, opts[e][0], opts[e][1], buffer, opts[e][2]);
+        mvwaddstr(win, opts[e][0], opts[e][1], buffer);
+        wattron(win, COLOR_PAIR(C_BLANCO));
+        mvwinnstr(win, opts[e-1][0], opts[e-1][1], buffer, opts[e-1][2]);
+        mvwaddstr(win, opts[e-1][0], opts[e-1][1], buffer);
+        wattroff(win, COLOR_PAIR(C_BLANCO));
+        e--;
+        break;
+      case 27:
+        return 1;
+      case 10:
+        switch (e) {
+          case 0:
+            nsread(win, &taskname, 2, 9, 20, 30);
+            break;
+          case 1:
+            mark_done(win, &done);
+            break;
+          case 2:
+            break;
+          case 3:
+            break;
+        }
+        wattron(win, COLOR_PAIR(C_BLANCO));
+        mvwinnstr(win, opts[e][0], opts[e][1], buffer, opts[e][2]);
+        mvwaddstr(win, opts[e][0], opts[e][1], buffer);
+        wattroff(win, COLOR_PAIR(C_BLANCO));
+        break;
+    }
+  }
+}
+
 void op_add_task(struct UI* ui, int p, int e) {
   struct List* list = ui->cbdata;
   int y; int x; getmaxyx(stdscr, y, x);
-  WINDOW* win = newwin(5,20, y/2-2, x/2-10);
-  mvwaddstr(win, 0, 10-1, "New");
-  wrefresh(win);
-  wgetch(win);
+  WINDOW* win = newwin(7,40, y/2-3, x/2-20);
+  keypad(win, 1);
+  box(win, ACS_VLINE, ACS_HLINE);
+  mvwaddstr(win, 0, 2, "New task");
+  mvwaddstr(win, 2, 3, "Name: ");
+  mvwaddstr(win, 3, 20-5, "( ) Is done");
+  mvwaddstr(win, 4, 20-5, "00:00 time");
+  mvwaddstr(win, 5, 20-2, "[OK]");
+  int opts[4][3] = {
+    {2,9,20},
+    {3,16,1},
+    {4,15,5},
+    {5,18,4}
+  };
+  addmenu_nav(win, opts);
   delwin(win);
-  UI_draw(ui);
+  UI_bring_up(ui);
 }
 void op_del_task(struct UI* ui) {
   struct List* list = ui->cbdata;
@@ -294,13 +381,13 @@ int task_nav(struct UI* ui) {
 }
 
 int main() {
-  L=fopen("log", "w");
   struct json_object* data = data_loader();
   struct List list = list_from_json(data);
   // draw interface
   WINDOW* stdscr = initscr();
   start_color();
   use_default_colors();
+  set_escdelay(100);
   noecho();
   curs_set(0);
   init_pair(C_AZUL, 15, 33);
@@ -323,6 +410,5 @@ int main() {
   // TODO: handle each event + terminal resize
   task_nav(&ui);
   endwin();
-  fclose(L);
   return 0;
 }

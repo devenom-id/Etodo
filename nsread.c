@@ -11,17 +11,27 @@ void clrton(WINDOW* win, int a, int b, int n) {
   }
 }
 
-void nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
+int nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
+  curs_set(1);
   int length = *buff ? strlen(*buff) : 0;
   int p=0;
   int e=0;
+  clrton(win, y, x, width+1);
+  wmove(win,y,x);
+  for (int i=0; e+i<length && i<width-p; i++) {
+    waddch(win, (*buff)[e+i]);
+  }
   wmove(win,y,x);
   while (1) {
     int ch = wgetch(win);
     switch (ch) {
       case '\n':
+        curs_set(0);
+        (*buff)[length] = 0;
+        return 1;
       case 27:
-        return;
+        curs_set(0);
+        return 0;
       case 263:
       case 127:
         if (!e) break;
