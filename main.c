@@ -394,6 +394,8 @@ void op_reorder_down(struct UI* ui, int p, int e) {
 }
 void op_mark_task(struct UI* ui, int p, int e) {
   struct List* list = ui->cbdata;
+  *done = !(*done);
+  mvwaddstr(win, p, 2, (*done) ? "x" : " ");
 }
 
 int task_nav(struct UI* ui) {
