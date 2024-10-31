@@ -226,29 +226,93 @@ struct List list_from_json(struct json_object* jobj) {
   return lista;
 }
 
+int time_input_validation(char* time) {
+  char hour = (time[0]-'0')*10+time[1]-'0';
+  char minute = (time[3]-'0')*10+time[4]-'0';
+  if (hour > 23 || minute > 59) return 0;
+  return 1;
+}
+
 void time_edit(WINDOW* win, char* time) {
-  int p=0;
+  int e=0;
+  mvwaddstr(win, 4, 15, time);
+  wattron(win, COLOR_PAIR(C_BLANCO));
+  mvwaddch(win, 4, 15+e, time[e]);
+  wattroff(win, COLOR_PAIR(C_BLANCO));
   while (1) {
     int ch = wgetch(win);
     switch (ch) {
       case KEY_LEFT:
+        if (!e) break;
+        mvwaddch(win, 4, 15+e, time[e]);
+        if (e==3) e-=2;
+        else e--;
+        wattron(win, COLOR_PAIR(C_BLANCO));
+        mvwaddch(win, 4, 15+e, time[e]);
+        wattroff(win, COLOR_PAIR(C_BLANCO));
         break;
       case KEY_RIGHT:
+        if (e==4) break;
+        mvwaddch(win, 4, 15+e, time[e]);
+        if (e==1) e+=2;
+        else e++;
+        wattron(win, COLOR_PAIR(C_BLANCO));
+        mvwaddch(win, 4, 15+e, time[e]);
+        wattroff(win, COLOR_PAIR(C_BLANCO));
         break;
       case 10:
-        break;
+        if (!time_input_validation(time)) {
+          int y,x; getmaxyx(stdscr,y,x);
+          WINDOW* cwin = newwin(3,28,y/2-1,x/2-14);
+          mvwaddstr(cwin, 0, x/2-2, "Error");
+          mvwaddstr(cwin, 1, 1, "Formato de tiempo invalido");
+          mvwaddstr(cwin, 2, x/2-2, "[OK]");
+          while (1) {
+            int ch = wgetch(cwin);
+            if (ch==10||ch==27) break;
+          }
+          delwin(cwin);
+          touchwin(win);
+          break;
+        }
+        return;
       case 27:
         return;
+      default:
+        if (!(ch>='0' && ch<='9')) break;
+        time[e] = ch;
+        wattron(win, COLOR_PAIR(C_BLANCO));
+        mvwaddch(win, 4, 15+e, ch);
+        wattroff(win, COLOR_PAIR(C_BLANCO));
     }
   }
 }
 
 void mark_done(WINDOW* win, int* done) {
-  mvwaddstr(win, 3, 16, (*done) ? "x" : " ");
   *done = !(*done);
+  mvwaddstr(win, 3, 16, (*done) ? "x" : " ");
 }
 
-int addmenu_nav(WINDOW* win, int opts[3][3]) {
+void redraw_tasks(struct UI* ui) {
+  return;
+}
+
+void op_add_task(struct UI* ui) {
+  struct List* list = ui->cbdata;
+  int y; int x; getmaxyx(stdscr, y, x);
+  WINDOW* win = newwin(7,40, y/2-3, x/2-20);
+  keypad(win, 1);
+  box(win, ACS_VLINE, ACS_HLINE);
+  mvwaddstr(win, 0, 2, "New task");
+  mvwaddstr(win, 2, 3, "Name: ");
+  mvwaddstr(win, 3, 20-5, "( ) Is done");
+  mvwaddstr(win, 5, 20-2, "[OK]");
+  int opts[4][3] = {
+    {2,9,20},
+    {3,16,1},
+    {4,15,5},
+    {5,18,4}
+  };
   char buffer[21] = {0};
   char* taskname = NULL;
   int done = 0;
@@ -265,6 +329,7 @@ int addmenu_nav(WINDOW* win, int opts[3][3]) {
         if (e==3) continue;
         mvwinnstr(win, opts[e][0], opts[e][1], buffer, opts[e][2]);
         mvwaddstr(win, opts[e][0], opts[e][1], buffer);
+        if (e==1 && !done) e++;
         wattron(win, COLOR_PAIR(C_BLANCO));
         mvwinnstr(win, opts[e+1][0], opts[e+1][1], buffer, opts[e+1][2]);
         mvwaddstr(win, opts[e+1][0], opts[e+1][1], buffer);
@@ -275,6 +340,7 @@ int addmenu_nav(WINDOW* win, int opts[3][3]) {
         if (!e) continue;
         mvwinnstr(win, opts[e][0], opts[e][1], buffer, opts[e][2]);
         mvwaddstr(win, opts[e][0], opts[e][1], buffer);
+        if (e==3 && !done) e--;
         wattron(win, COLOR_PAIR(C_BLANCO));
         mvwinnstr(win, opts[e-1][0], opts[e-1][1], buffer, opts[e-1][2]);
         mvwaddstr(win, opts[e-1][0], opts[e-1][1], buffer);
@@ -282,7 +348,7 @@ int addmenu_nav(WINDOW* win, int opts[3][3]) {
         e--;
         break;
       case 27:
-        return 1;
+        return;
       case 10:
         switch (e) {
           case 0:
@@ -290,11 +356,14 @@ int addmenu_nav(WINDOW* win, int opts[3][3]) {
             break;
           case 1:
             mark_done(win, &done);
+            if (done) {mvwaddstr(win, 4, 20-5, tasktime);waddstr(win, " time");}
+            else mvwhline(win, 4, 20-5, ' ', 10);
             break;
           case 2:
+            time_edit(win, tasktime);
             break;
           case 3:
-            break;
+            goto op_add_task_out;
         }
         wattron(win, COLOR_PAIR(C_BLANCO));
         mvwinnstr(win, opts[e][0], opts[e][1], buffer, opts[e][2]);
@@ -303,42 +372,27 @@ int addmenu_nav(WINDOW* win, int opts[3][3]) {
         break;
     }
   }
-}
-
-void op_add_task(struct UI* ui, int p, int e) {
-  struct List* list = ui->cbdata;
-  int y; int x; getmaxyx(stdscr, y, x);
-  WINDOW* win = newwin(7,40, y/2-3, x/2-20);
-  keypad(win, 1);
-  box(win, ACS_VLINE, ACS_HLINE);
-  mvwaddstr(win, 0, 2, "New task");
-  mvwaddstr(win, 2, 3, "Name: ");
-  mvwaddstr(win, 3, 20-5, "( ) Is done");
-  mvwaddstr(win, 4, 20-5, "00:00 time");
-  mvwaddstr(win, 5, 20-2, "[OK]");
-  int opts[4][3] = {
-    {2,9,20},
-    {3,16,1},
-    {4,15,5},
-    {5,18,4}
-  };
-  addmenu_nav(win, opts);
+op_add_task_out:
   delwin(win);
   UI_bring_up(ui);
+  List_add(list, Task_new(taskname,done,tasktime));
+  wmove(ui->main,0,0);
+  task_draw(ui->main, ui->cbdata, NULL, NULL, 0);
 }
-void op_del_task(struct UI* ui) {
+
+void op_del_task(struct UI* ui, int p, int e) {
   struct List* list = ui->cbdata;
 }
-void op_ren_task(struct UI* ui) {
+void op_ren_task(struct UI* ui, int p, int e) {
   struct List* list = ui->cbdata;
 }
-void op_reorder_up(struct UI* ui) {
+void op_reorder_up(struct UI* ui, int p, int e) {
   struct List* list = ui->cbdata;
 }
-void op_reorder_down(struct UI* ui) {
+void op_reorder_down(struct UI* ui, int p, int e) {
   struct List* list = ui->cbdata;
 }
-void op_mark_task(struct UI* ui) {
+void op_mark_task(struct UI* ui, int p, int e) {
   struct List* list = ui->cbdata;
 }
 
@@ -358,21 +412,21 @@ int task_nav(struct UI* ui) {
         task_draw(ui->main, list, &p, &e, -1);
         break;
       case 'a': // TODO: Add
-        op_add_task(ui, p, e);
+        op_add_task(ui);
         break;
       case 'D': // TODO: Delete
-        op_del_task(ui);
+        op_del_task(ui, p, e);
         break;
       case 'r': // TODO: Rename
-        op_ren_task(ui);
+        op_ren_task(ui, p, e);
         break;
       case 'o': // TODO: Reorder up
         break;
       case 'l': // TODO: Reorder down
-        op_reorder_down(ui);
+        op_reorder_down(ui, p, e);
         break;
       case 10: // TODO: Mark task
-        op_mark_task(ui);
+        op_mark_task(ui, p, e);
         break;
       case 27:
         return 1;
