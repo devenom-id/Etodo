@@ -93,6 +93,7 @@ void UI_free(struct UI* ui) {
 void task_draw(WINDOW* win, struct List* list, int* p, int* e, int n) {
   int y, x; getmaxyx(win, y, x);
   if (n==0) {
+    wmove(win, 0, 0); wclrtobot(win); wmove(win, 0, 0);
     int stop = y-1<=list->size ? y-1 : list->size;
     for (int i=0; i<stop; i++) {
       // TODO: IF DONE, SHOW HOUR OF COMPLETION
@@ -100,9 +101,7 @@ void task_draw(WINDOW* win, struct List* list, int* p, int* e, int n) {
       waddstr(win, list->tasks[i].task);
       waddch(win, '\n');
     }
-    wattron(win, COLOR_PAIR(C_BLANCO));
-    mvwaddstr(win, 0, 5, list->tasks[0].task);
-    wattroff(win, COLOR_PAIR(C_BLANCO));
+
     wrefresh(win);
   }
   else if (n==1){
@@ -348,7 +347,8 @@ void op_add_task(struct UI* ui) {
         e--;
         break;
       case 27:
-        return;
+        taskname = NULL;
+        goto op_add_task_out;
       case 10:
         switch (e) {
           case 0:
@@ -375,13 +375,15 @@ void op_add_task(struct UI* ui) {
 op_add_task_out:
   delwin(win);
   UI_bring_up(ui);
-  List_add(list, Task_new(taskname,done,tasktime));
+  if (taskname) List_add(list, Task_new(taskname,done,tasktime));
   wmove(ui->main,0,0);
   task_draw(ui->main, ui->cbdata, NULL, NULL, 0);
 }
 
-void op_del_task(struct UI* ui, int p, int e) {
+void op_del_task(struct UI* ui, int e) {
   struct List* list = ui->cbdata;
+  List_delete(list, e);
+  task_draw(ui->main, list, NULL, NULL, 0);
 }
 void op_ren_task(struct UI* ui, int p, int e) {
   struct List* list = ui->cbdata;
@@ -394,14 +396,17 @@ void op_reorder_down(struct UI* ui, int p, int e) {
 }
 void op_mark_task(struct UI* ui, int p, int e) {
   struct List* list = ui->cbdata;
-  *done = !(*done);
-  mvwaddstr(win, p, 2, (*done) ? "x" : " ");
+  list->tasks[e].state = !list->tasks[e].state;
+  mvwaddstr(ui->main, p, 2, (list->tasks[e].state) ? "x" : " ");
 }
 
 int task_nav(struct UI* ui) {
   int p = 0;
   int e = 0;
   struct List* list = ui->cbdata;
+  wattron(ui->main, COLOR_PAIR(C_BLANCO));
+  mvwaddstr(ui->main, 0, 5, list->tasks[0].task);
+  wattroff(ui->main, COLOR_PAIR(C_BLANCO));
   while (1) {
     int ch = wgetch(ui->main);
     switch (ch) {
@@ -415,9 +420,17 @@ int task_nav(struct UI* ui) {
         break;
       case 'a': // TODO: Add
         op_add_task(ui);
+        wattron(ui->main, COLOR_PAIR(C_BLANCO));
+        mvwaddstr(ui->main, p, 5, list->tasks[e].task);
+        wattroff(ui->main, COLOR_PAIR(C_BLANCO));
         break;
       case 'D': // TODO: Delete
-        op_del_task(ui, p, e);
+        if (!list->size) continue;
+        op_del_task(ui, e);
+        if (e==list->size) {p--;e--;}
+        wattron(ui->main, COLOR_PAIR(C_BLANCO));
+        mvwaddstr(ui->main, p, 5, list->tasks[e].task);
+        wattroff(ui->main, COLOR_PAIR(C_BLANCO));
         break;
       case 'r': // TODO: Rename
         op_ren_task(ui, p, e);
