@@ -97,10 +97,14 @@ void task_draw(WINDOW* win, struct List* list, int* p, int* e, int n) {
     wmove(win, 0, 0); wclrtobot(win); wmove(win, 0, 0);
     int stop = y-1<=list->size ? y-1 : list->size;
     for (int i=0; i<stop; i++) {
-      // TODO: IF DONE, SHOW HOUR OF COMPLETION
-      waddstr(win, list->tasks[i].state ? " (x) " : " ( ) ");
-      waddstr(win, list->tasks[i].task);
-      waddch(win, '\n');
+      if (list->tasks[i].state) { 
+        mvwaddstr(win, i, 0, " (x) ");
+        waddnstr(win, list->tasks[i].task, x-11);
+        mvwaddstr(win, i, x-5, list->tasks[i].time);
+      } else {
+        mvwaddstr(win, i, 0, " ( ) ");
+        waddnstr(win, list->tasks[i].task, x-11);
+      }
     }
 
     wrefresh(win);
@@ -386,8 +390,91 @@ void op_del_task(struct UI* ui, int e) {
   List_delete(list, e);
   task_draw(ui->main, list, NULL, NULL, 0);
 }
-void op_ren_task(struct UI* ui, int p, int e) {
+void op_ren_task(struct UI* ui, const int e) {
   struct List* list = ui->cbdata;
+  int y; int x; getmaxyx(stdscr, y, x);
+  WINDOW* win = newwin(7,40, y/2-3, x/2-20);
+  keypad(win, 1);
+  box(win, ACS_VLINE, ACS_HLINE);
+  mvwaddstr(win, 0, 2, "New task");
+  mvwaddstr(win, 2, 3, "Name: ");
+  mvwaddstr(win, 3, 20-5, "( ) Is done");
+  mvwaddstr(win, 5, 20-2, "[OK]");
+  int opts[4][3] = {
+    {2,9,20},
+    {3,16,1},
+    {4,15,5},
+    {5,18,4}
+  };
+  char buffer[21] = {0};
+  char** taskname = &list->tasks[e].task;
+  char* tasktime = list->tasks[e].time;
+  wattron(win, COLOR_PAIR(C_BLANCO));
+  mvwaddstr(win, opts[0][0], opts[0][1], list->tasks[e].task);
+  wattroff(win, COLOR_PAIR(C_BLANCO));
+  mvwaddstr(win, opts[1][0], opts[1][1], list->tasks[e].state?"x":" ");
+  if (list->tasks[e].state) {
+    mvwaddstr(win, 4, 20-5, list->tasks[e].time);
+    waddstr(win, " time");
+  }
+  int p=0;
+  while (1) {
+    int ch = wgetch(win);
+    switch (ch) {
+      case KEY_DOWN:
+        if (p==3) continue;
+        mvwinnstr(win, opts[p][0], opts[p][1], buffer, opts[p][2]);
+        mvwaddstr(win, opts[p][0], opts[p][1], buffer);
+        if (p==1 && !list->tasks[e].state) p++;
+        wattron(win, COLOR_PAIR(C_BLANCO));
+        mvwinnstr(win, opts[p+1][0], opts[p+1][1], buffer, opts[p+1][2]);
+        mvwaddstr(win, opts[p+1][0], opts[p+1][1], buffer);
+        wattroff(win, COLOR_PAIR(C_BLANCO));
+        p++;
+        break;
+      case KEY_UP:
+        if (!p) continue;
+        mvwinnstr(win, opts[p][0], opts[p][1], buffer, opts[p][2]);
+        mvwaddstr(win, opts[p][0], opts[p][1], buffer);
+        if (p==3 && !list->tasks[e].state) p--;
+        wattron(win, COLOR_PAIR(C_BLANCO));
+        mvwinnstr(win, opts[p-1][0], opts[p-1][1], buffer, opts[p-1][2]);
+        mvwaddstr(win, opts[p-1][0], opts[p-1][1], buffer);
+        wattroff(win, COLOR_PAIR(C_BLANCO));
+        p--;
+        break;
+      case 27:
+        *taskname = NULL;
+        goto op_add_task_out;
+      case 10:
+        switch (p) {
+          case 0:
+            nsread(win, taskname, 2, 9, 20, 30);
+            break;
+          case 1:
+            mark_done(win, &list->tasks[e].state);
+            if (list->tasks[e].state) {mvwaddstr(win, 4, 20-5, tasktime);waddstr(win, " time");}
+            else mvwhline(win, 4, 20-5, ' ', 10);
+            break;
+          case 2:
+            time_edit(win, tasktime);
+            break;
+          case 3:
+            goto op_add_task_out;
+        }
+        wattron(win, COLOR_PAIR(C_BLANCO));
+        mvwinnstr(win, opts[p][0], opts[p][1], buffer, opts[p][2]);
+        mvwaddstr(win, opts[p][0], opts[p][1], buffer);
+        wattroff(win, COLOR_PAIR(C_BLANCO));
+        break;
+    }
+  }
+op_add_task_out:
+  delwin(win);
+  UI_bring_up(ui);
+  if (*taskname) List_add(list, Task_new(*taskname,list->tasks[e].state,tasktime));
+  wmove(ui->main,0,0);
+  task_draw(ui->main, ui->cbdata, NULL, NULL, 0);
 }
 void op_reorder_up(struct UI* ui, int p, int e) {
   struct List* list = ui->cbdata;
@@ -398,14 +485,18 @@ void op_reorder_down(struct UI* ui, int p, int e) {
 void op_mark_task(struct UI* ui, int p, int e) {
   struct List* list = ui->cbdata;
   list->tasks[e].state = !list->tasks[e].state;
+  int x=getmaxx(ui->main);
   if (list->tasks[e].state) {
     time_t tm=time(0);
     struct tm* now = localtime(&tm);
-    memcpy(list->tasks[e].time, now->tm_hour, 2);
-    memcpy(list->tasks[e].time+3, now->tm_min,2);
+    char buff[6]={0};
+    strftime(buff, 5, "%H:%M", now);
+    strcpy(list->tasks[e].time, buff);
     mvwaddstr(ui->main, p, 2, "x");
+    mvwaddstr(ui->main, p, x-5, buff);
   } else {
     mvwaddstr(ui->main, p, 2, " ");
+    wmove(ui->main, p, x-5);wclrtoeol(ui->main);
   }
 }
 
@@ -429,14 +520,14 @@ int task_nav(struct UI* ui) {
         if (!list->size||!e) break;
         task_draw(ui->main, list, &p, &e, -1);
         break;
-      case 'a': // TODO: Add
+      case 'a':
         op_add_task(ui);
         save_list(list);
         wattron(ui->main, COLOR_PAIR(C_BLANCO));
         mvwaddstr(ui->main, p, 5, list->tasks[e].task);
         wattroff(ui->main, COLOR_PAIR(C_BLANCO));
         break;
-      case 'D': // TODO: Delete
+      case 'D':
         if (!list->size) continue;
         op_del_task(ui, e);
         save_list(list);
@@ -446,15 +537,19 @@ int task_nav(struct UI* ui) {
         mvwaddstr(ui->main, p, 5, list->tasks[e].task);
         wattroff(ui->main, COLOR_PAIR(C_BLANCO));
         break;
-      case 'r': // TODO: Rename
-        op_ren_task(ui, p, e);
+      case 'e':
+        op_ren_task(ui, e);
+        save_list(list);
+        wattron(ui->main, COLOR_PAIR(C_BLANCO));
+        mvwaddstr(ui->main, p, 5, list->tasks[e].task);
+        wattroff(ui->main, COLOR_PAIR(C_BLANCO));
         break;
       case 'o': // TODO: Reorder up
         break;
       case 'l': // TODO: Reorder down
         op_reorder_down(ui, p, e);
         break;
-      case 10: // TODO: Mark task
+      case 10:
         if (list->size) op_mark_task(ui, p, e);
         save_list(list);
         break;
@@ -491,7 +586,7 @@ int main() {
   UI_set_state(&ui, 0, &list);
   UI_draw(&ui);
   // handle key input
-  // TODO: handle each event + terminal resize
+  // TODO: terminal resize
   task_nav(&ui);
   endwin();
   return 0;
