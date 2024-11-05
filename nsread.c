@@ -27,6 +27,10 @@ int nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
     switch (ch) {
       case '\n':
         curs_set(0);
+        if (!length) {
+          (*buff) = NULL;
+          return 1;
+        }
         (*buff)[length] = 0;
         return 1;
       case 27:
