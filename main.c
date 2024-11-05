@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <json.h>
 #include "nsread.h"
 #define C_AZUL 1
@@ -397,7 +398,15 @@ void op_reorder_down(struct UI* ui, int p, int e) {
 void op_mark_task(struct UI* ui, int p, int e) {
   struct List* list = ui->cbdata;
   list->tasks[e].state = !list->tasks[e].state;
-  mvwaddstr(ui->main, p, 2, (list->tasks[e].state) ? "x" : " ");
+  if (list->tasks[e].state) {
+    time_t tm=time(0);
+    struct tm* now = localtime(&tm);
+    memcpy(list->tasks[e].time, now->tm_hour, 2);
+    memcpy(list->tasks[e].time+3, now->tm_min,2);
+    mvwaddstr(ui->main, p, 2, "x");
+  } else {
+    mvwaddstr(ui->main, p, 2, " ");
+  }
 }
 
 int task_nav(struct UI* ui) {
