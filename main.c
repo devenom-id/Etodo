@@ -404,22 +404,25 @@ int task_nav(struct UI* ui) {
   int p = 0;
   int e = 0;
   struct List* list = ui->cbdata;
-  wattron(ui->main, COLOR_PAIR(C_BLANCO));
-  mvwaddstr(ui->main, 0, 5, list->tasks[0].task);
-  wattroff(ui->main, COLOR_PAIR(C_BLANCO));
+  if (list->size) {
+    wattron(ui->main, COLOR_PAIR(C_BLANCO));
+    mvwaddstr(ui->main, 0, 5, list->tasks[0].task);
+    wattroff(ui->main, COLOR_PAIR(C_BLANCO));
+  }
   while (1) {
     int ch = wgetch(ui->main);
     switch (ch) {
       case KEY_DOWN:
-        if (e==list->size-1) break;
+        if (!list->size||e==list->size-1) break;
         task_draw(ui->main, list, &p, &e, 1);
         break;
       case KEY_UP:
-        if (!e) break;
+        if (!list->size||!e) break;
         task_draw(ui->main, list, &p, &e, -1);
         break;
       case 'a': // TODO: Add
         op_add_task(ui);
+        save_list(list);
         wattron(ui->main, COLOR_PAIR(C_BLANCO));
         mvwaddstr(ui->main, p, 5, list->tasks[e].task);
         wattroff(ui->main, COLOR_PAIR(C_BLANCO));
@@ -427,6 +430,8 @@ int task_nav(struct UI* ui) {
       case 'D': // TODO: Delete
         if (!list->size) continue;
         op_del_task(ui, e);
+        save_list(list);
+        if (!list->size) continue;
         if (e==list->size) {p--;e--;}
         wattron(ui->main, COLOR_PAIR(C_BLANCO));
         mvwaddstr(ui->main, p, 5, list->tasks[e].task);
@@ -441,7 +446,8 @@ int task_nav(struct UI* ui) {
         op_reorder_down(ui, p, e);
         break;
       case 10: // TODO: Mark task
-        op_mark_task(ui, p, e);
+        if (list->size) op_mark_task(ui, p, e);
+        save_list(list);
         break;
       case 27:
         return 1;
