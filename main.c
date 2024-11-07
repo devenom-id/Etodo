@@ -478,11 +478,25 @@ op_ren_task_out:
   wmove(ui->main,0,0);
   task_draw(ui->main, ui->cbdata, NULL, NULL, 0);
 }
-void op_reorder_up(struct UI* ui, int p, int e) {
+void op_reorder_up(struct UI* ui, int* p, int* e) {
   struct List* list = ui->cbdata;
+  if (!*e) return;
+  struct Task aux = list->tasks[*e];
+  list->tasks[*e] = list->tasks[*e-1];
+  list->tasks[*e-1] = aux;
+  wmove(ui->main,0,0);
+  task_draw(ui->main, ui->cbdata, NULL, NULL, 0);
+  (*p)--;(*e)--;
 }
-void op_reorder_down(struct UI* ui, int p, int e) {
+void op_reorder_down(struct UI* ui, int* p, int* e) {
   struct List* list = ui->cbdata;
+  if (*e==list->size-1) return;
+  struct Task aux = list->tasks[*e];
+  list->tasks[*e] = list->tasks[*e+1];
+  list->tasks[*e+1] = aux;
+  wmove(ui->main,0,0);
+  task_draw(ui->main, ui->cbdata, NULL, NULL, 0);
+  (*p)++;(*e)++;
 }
 void op_mark_task(struct UI* ui, int p, int e) {
   struct List* list = ui->cbdata;
@@ -517,17 +531,14 @@ int task_nav(struct UI* ui) {
       case KEY_DOWN:
         if (!list->size||e==list->size-1) break;
         task_draw(ui->main, list, &p, &e, 1);
-        break;
+        continue;
       case KEY_UP:
         if (!list->size||!e) break;
         task_draw(ui->main, list, &p, &e, -1);
-        break;
+        continue;
       case 'a':
         op_add_task(ui);
         save_list(list);
-        wattron(ui->main, COLOR_PAIR(C_BLANCO));
-        mvwaddstr(ui->main, p, 5, list->tasks[e].task);
-        wattroff(ui->main, COLOR_PAIR(C_BLANCO));
         break;
       case 'D':
         if (!list->size) continue;
@@ -535,29 +546,30 @@ int task_nav(struct UI* ui) {
         save_list(list);
         if (!list->size) continue;
         if (e==list->size) {p--;e--;}
-        wattron(ui->main, COLOR_PAIR(C_BLANCO));
-        mvwaddstr(ui->main, p, 5, list->tasks[e].task);
-        wattroff(ui->main, COLOR_PAIR(C_BLANCO));
         break;
       case 'e':
         op_ren_task(ui, e);
         save_list(list);
-        wattron(ui->main, COLOR_PAIR(C_BLANCO));
-        mvwaddstr(ui->main, p, 5, list->tasks[e].task);
-        wattroff(ui->main, COLOR_PAIR(C_BLANCO));
         break;
       case 'o': // TODO: Reorder up
+        op_reorder_up(ui, &p, &e);
+        save_list(list);
         break;
       case 'l': // TODO: Reorder down
-        op_reorder_down(ui, p, e);
+        op_reorder_down(ui, &p, &e);
+        save_list(list);
         break;
       case 10:
         if (list->size) op_mark_task(ui, p, e);
         save_list(list);
-        break;
+        continue;
       case 27:
         return 1;
     }
+    if (!list->size) continue;
+    wattron(ui->main, COLOR_PAIR(C_BLANCO));
+    mvwaddstr(ui->main, p, 5, list->tasks[e].task);
+    wattroff(ui->main, COLOR_PAIR(C_BLANCO));
   }
 }
 
