@@ -409,6 +409,7 @@ void op_ren_task(struct UI* ui, const int e) {
   char buffer[21] = {0};
   char** taskname = &list->tasks[e].task;
   char* tasktime = list->tasks[e].time;
+  char* namebkp = strdup(*taskname);
   wattron(win, COLOR_PAIR(C_BLANCO));
   mvwaddstr(win, opts[0][0], opts[0][1], list->tasks[e].task);
   wattroff(win, COLOR_PAIR(C_BLANCO));
@@ -445,7 +446,7 @@ void op_ren_task(struct UI* ui, const int e) {
         break;
       case 27:
         *taskname = NULL;
-        goto op_add_task_out;
+        goto op_ren_task_out;
       case 10:
         switch (p) {
           case 0:
@@ -460,7 +461,7 @@ void op_ren_task(struct UI* ui, const int e) {
             time_edit(win, tasktime);
             break;
           case 3:
-            goto op_add_task_out;
+            goto op_ren_task_out;
         }
         wattron(win, COLOR_PAIR(C_BLANCO));
         mvwinnstr(win, opts[p][0], opts[p][1], buffer, opts[p][2]);
@@ -469,10 +470,11 @@ void op_ren_task(struct UI* ui, const int e) {
         break;
     }
   }
-op_add_task_out:
+op_ren_task_out:
   delwin(win);
   UI_bring_up(ui);
-  if (*taskname) List_add(list, Task_new(*taskname,list->tasks[e].state,tasktime));
+  if (!(*taskname)) *taskname = namebkp;
+  List_add(list, Task_new(*taskname,list->tasks[e].state,tasktime));
   wmove(ui->main,0,0);
   task_draw(ui->main, ui->cbdata, NULL, NULL, 0);
 }
@@ -489,8 +491,8 @@ void op_mark_task(struct UI* ui, int p, int e) {
   if (list->tasks[e].state) {
     time_t tm=time(0);
     struct tm* now = localtime(&tm);
-    char buff[6]={0};
-    strftime(buff, 5, "%H:%M", now);
+    char buff[7]={0};
+    strftime(buff, 6, "%H:%M", now);
     strcpy(list->tasks[e].time, buff);
     mvwaddstr(ui->main, p, 2, "x");
     mvwaddstr(ui->main, p, x-5, buff);
