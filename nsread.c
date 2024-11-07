@@ -34,8 +34,7 @@ int nsread(WINDOW* win, char** buff, int y, int x, int width, int maxch) {
         (*buff)[length] = 0;
         return 1;
       case 27:
-        curs_set(0);
-        return 0;
+        break;/*curs_set(0);return 0;*/
       case 263:
       case 127:
         if (!e) break;
