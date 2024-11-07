@@ -91,19 +91,19 @@ void UI_free(struct UI* ui) {
   free(ui->fdraw);
 }
 
-void task_draw(WINDOW* win, struct List* list, int* p, int* e, int n) {
+void task_draw(WINDOW* win, struct List* list, int* p, int* e, int b, int n) {
   int y, x; getmaxyx(win, y, x);
   if (n==0) {
     wmove(win, 0, 0); wclrtobot(win); wmove(win, 0, 0);
-    int stop = y-1<=list->size ? y-1 : list->size;
+    int stop = (y)<=list->size ? (y) : list->size;
     for (int i=0; i<stop; i++) {
-      if (list->tasks[i].state) { 
+      if (list->tasks[i+b].state) { 
         mvwaddstr(win, i, 0, " (x) ");
-        waddnstr(win, list->tasks[i].task, x-11);
-        mvwaddstr(win, i, x-5, list->tasks[i].time);
+        waddnstr(win, list->tasks[i+b].task, x-11);
+        mvwaddstr(win, i, x-5, list->tasks[i+b].time);
       } else {
         mvwaddstr(win, i, 0, " ( ) ");
-        waddnstr(win, list->tasks[i].task, x-11);
+        waddnstr(win, list->tasks[i+b].task, x-11);
       }
     }
 
@@ -137,7 +137,7 @@ void main_ui(struct UI* ui) {
   refresh();
 
   // write List
-  task_draw(ui->main, ui->cbdata, NULL, NULL, 0);  // draw all
+  task_draw(ui->main, ui->cbdata, NULL, NULL, 0, 0);  // draw all
 
   WINDOW* optwin = ui->windows[1];
   char* optarr[][2] = {
@@ -297,10 +297,6 @@ void mark_done(WINDOW* win, int* done) {
   mvwaddstr(win, 3, 16, (*done) ? "x" : " ");
 }
 
-void redraw_tasks(struct UI* ui) {
-  return;
-}
-
 void op_add_task(struct UI* ui) {
   struct List* list = ui->cbdata;
   int y; int x; getmaxyx(stdscr, y, x);
@@ -382,13 +378,13 @@ op_add_task_out:
   UI_bring_up(ui);
   if (taskname) List_add(list, Task_new(taskname,done,tasktime));
   wmove(ui->main,0,0);
-  task_draw(ui->main, ui->cbdata, NULL, NULL, 0);
+  task_draw(ui->main, ui->cbdata, NULL, NULL, 0, 0);
 }
 
 void op_del_task(struct UI* ui, int e) {
   struct List* list = ui->cbdata;
   List_delete(list, e);
-  task_draw(ui->main, list, NULL, NULL, 0);
+  task_draw(ui->main, list, NULL, NULL, 0, 0);
 }
 void op_ren_task(struct UI* ui, const int e) {
   struct List* list = ui->cbdata;
@@ -476,26 +472,26 @@ op_ren_task_out:
   if (!(*taskname)) *taskname = namebkp;
   List_add(list, Task_new(*taskname,list->tasks[e].state,tasktime));
   wmove(ui->main,0,0);
-  task_draw(ui->main, ui->cbdata, NULL, NULL, 0);
+  task_draw(ui->main, ui->cbdata, NULL, NULL, 0, 0);
 }
-void op_reorder_up(struct UI* ui, int* p, int* e) {
+void op_reorder_up(struct UI* ui, int* p, int* e, int b) {
   struct List* list = ui->cbdata;
   if (!*e) return;
   struct Task aux = list->tasks[*e];
   list->tasks[*e] = list->tasks[*e-1];
   list->tasks[*e-1] = aux;
   wmove(ui->main,0,0);
-  task_draw(ui->main, ui->cbdata, NULL, NULL, 0);
+  task_draw(ui->main, ui->cbdata, NULL, NULL, b, 0);
   (*p)--;(*e)--;
 }
-void op_reorder_down(struct UI* ui, int* p, int* e) {
+void op_reorder_down(struct UI* ui, int* p, int* e, int b) {
   struct List* list = ui->cbdata;
   if (*e==list->size-1) return;
   struct Task aux = list->tasks[*e];
   list->tasks[*e] = list->tasks[*e+1];
   list->tasks[*e+1] = aux;
   wmove(ui->main,0,0);
-  task_draw(ui->main, ui->cbdata, NULL, NULL, 0);
+  task_draw(ui->main, ui->cbdata, NULL, NULL, b, 0);
   (*p)++;(*e)++;
 }
 void op_mark_task(struct UI* ui, int p, int e) {
@@ -519,6 +515,8 @@ void op_mark_task(struct UI* ui, int p, int e) {
 int task_nav(struct UI* ui) {
   int p = 0;
   int e = 0;
+  int b = 0;
+  int y = getmaxy(ui->main);
   struct List* list = ui->cbdata;
   if (list->size) {
     wattron(ui->main, COLOR_PAIR(C_BLANCO));
@@ -530,11 +528,23 @@ int task_nav(struct UI* ui) {
     switch (ch) {
       case KEY_DOWN:
         if (!list->size||e==list->size-1) break;
-        task_draw(ui->main, list, &p, &e, 1);
+        if (p==y-1&&e!=list->size-1) {
+          b++;
+          task_draw(ui->main, list, &p, &e, b, 0);
+          e++;
+          break;
+        }
+        task_draw(ui->main, list, &p, &e, b, 1);
         continue;
       case KEY_UP:
         if (!list->size||!e) break;
-        task_draw(ui->main, list, &p, &e, -1);
+        if (!p&&e) {
+          b--;
+          task_draw(ui->main, list, &p, &e, b, 0);
+          e--;
+          break;
+        }
+        task_draw(ui->main, list, &p, &e, b, -1);
         continue;
       case 'a':
         op_add_task(ui);
@@ -552,11 +562,13 @@ int task_nav(struct UI* ui) {
         save_list(list);
         break;
       case 'o': // TODO: Reorder up
-        op_reorder_up(ui, &p, &e);
+        if (!p&&e) {b--;p++;}
+        op_reorder_up(ui, &p, &e, b);
         save_list(list);
         break;
       case 'l': // TODO: Reorder down
-        op_reorder_down(ui, &p, &e);
+        if (p==y-1&&e!=list->size-1) {b++;p--;}
+        op_reorder_down(ui, &p, &e, b);
         save_list(list);
         break;
       case 10:
