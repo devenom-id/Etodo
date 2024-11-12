@@ -60,7 +60,7 @@ struct UI {
   int state;
   char winarr_length;
   char fdraw_length;
-  void* cbdata;
+  void** cbdata;
 };
 struct UI UI_new(WINDOW** windows, char winarr_length, WINDOW* main) {
   struct UI ui = {windows, main, NULL, -1, winarr_length, 0}; return ui;
@@ -298,7 +298,7 @@ void mark_done(WINDOW* win, int* done) {
 }
 
 void op_add_task(struct UI* ui) {
-  struct List* list = ui->cbdata;
+  struct List* list = ui->cbdata[0];
   int y; int x; getmaxyx(stdscr, y, x);
   WINDOW* win = newwin(7,40, y/2-3, x/2-20);
   keypad(win, 1);
@@ -382,12 +382,12 @@ op_add_task_out:
 }
 
 void op_del_task(struct UI* ui, int e) {
-  struct List* list = ui->cbdata;
+  struct List* list = ui->cbdata[0];
   List_delete(list, e);
   task_draw(ui->main, list, NULL, NULL, 0, 0);
 }
 void op_ren_task(struct UI* ui, const int e) {
-  struct List* list = ui->cbdata;
+  struct List* list = ui->cbdata[0];
   int y; int x; getmaxyx(stdscr, y, x);
   WINDOW* win = newwin(7,40, y/2-3, x/2-20);
   keypad(win, 1);
@@ -475,7 +475,7 @@ op_ren_task_out:
   task_draw(ui->main, ui->cbdata, NULL, NULL, 0, 0);
 }
 void op_reorder_up(struct UI* ui, int* p, int* e, int b) {
-  struct List* list = ui->cbdata;
+  struct List* list = ui->cbdata[0];
   if (!*e) return;
   struct Task aux = list->tasks[*e];
   list->tasks[*e] = list->tasks[*e-1];
@@ -485,7 +485,7 @@ void op_reorder_up(struct UI* ui, int* p, int* e, int b) {
   (*p)--;(*e)--;
 }
 void op_reorder_down(struct UI* ui, int* p, int* e, int b) {
-  struct List* list = ui->cbdata;
+  struct List* list = ui->cbdata[0];
   if (*e==list->size-1) return;
   struct Task aux = list->tasks[*e];
   list->tasks[*e] = list->tasks[*e+1];
@@ -495,7 +495,7 @@ void op_reorder_down(struct UI* ui, int* p, int* e, int b) {
   (*p)++;(*e)++;
 }
 void op_mark_task(struct UI* ui, int p, int e) {
-  struct List* list = ui->cbdata;
+  struct List* list = ui->cbdata[0];
   list->tasks[e].state = !list->tasks[e].state;
   int x=getmaxx(ui->main);
   if (list->tasks[e].state) {
@@ -517,7 +517,9 @@ int task_nav(struct UI* ui) {
   int e = 0;
   int b = 0;
   int y = getmaxy(ui->main);
-  struct List* list = ui->cbdata;
+  struct List* list = ui->cbdata[0];
+  ui->cbdata[1] = &p;
+  ui->cbdata[2] = &e;
   if (list->size) {
     wattron(ui->main, COLOR_PAIR(C_BLANCO));
     mvwaddstr(ui->main, 0, 5, list->tasks[0].task);
@@ -609,6 +611,7 @@ int main() {
   WINDOW* winarr[2] = {taskwin, optwin};
   struct UI ui = UI_new(winarr,2,taskwin);
   UI_register(&ui, main_ui);
+  void* cbdata[3] = {&list}
   UI_set_state(&ui, 0, &list);
   UI_draw(&ui);
   // handle key input
