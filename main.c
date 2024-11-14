@@ -94,7 +94,7 @@ void UI_free(struct UI* ui) {
 void task_draw(WINDOW* win, struct List* list, int* p, int* e, int b, int n) {
   int y, x; getmaxyx(win, y, x);
   if (n==0) {
-    wmove(win, 0, 0); wclrtobot(win); wmove(win, 0, 0);
+    wmove(win, 0, 0); wclear(win);
     int stop = (y)<=list->size ? (y) : list->size;
     for (int i=0; i<stop; i++) {
       if (list->tasks[i+b].state) { 
@@ -131,13 +131,14 @@ void task_draw(WINDOW* win, struct List* list, int* p, int* e, int b, int n) {
 
 void main_ui(struct UI* ui) {
   int y,x; getmaxyx(stdscr, y, x);
+  move(0,0);clrtoeol();
   attron(COLOR_PAIR(C_BLANCO));
     mvaddstr(0, x/2-3, " Etodo ");
   attroff(COLOR_PAIR(C_BLANCO));
   refresh();
 
   // write List
-  task_draw(ui->main, ui->cbdata, NULL, NULL, 0, 0);  // draw all
+  task_draw(ui->main, ui->cbdata[0], NULL, NULL, 0, 0);  // draw all
 
   WINDOW* optwin = ui->windows[1];
   char* optarr[][2] = {
@@ -161,6 +162,7 @@ void main_ui(struct UI* ui) {
   }
 
   wrefresh(ui->main);
+  touchwin(ui->windows[1]);
   wrefresh(ui->windows[1]);
 }
 
@@ -378,7 +380,7 @@ op_add_task_out:
   UI_bring_up(ui);
   if (taskname) List_add(list, Task_new(taskname,done,tasktime));
   wmove(ui->main,0,0);
-  task_draw(ui->main, ui->cbdata, NULL, NULL, 0, 0);
+  task_draw(ui->main, ui->cbdata[0], NULL, NULL, 0, 0);
 }
 
 void op_del_task(struct UI* ui, int e) {
@@ -472,7 +474,7 @@ op_ren_task_out:
   if (!(*taskname)) *taskname = namebkp;
   List_add(list, Task_new(*taskname,list->tasks[e].state,tasktime));
   wmove(ui->main,0,0);
-  task_draw(ui->main, ui->cbdata, NULL, NULL, 0, 0);
+  task_draw(ui->main, ui->cbdata[0], NULL, NULL, 0, 0);
 }
 void op_reorder_up(struct UI* ui, int* p, int* e, int b) {
   struct List* list = ui->cbdata[0];
@@ -481,7 +483,7 @@ void op_reorder_up(struct UI* ui, int* p, int* e, int b) {
   list->tasks[*e] = list->tasks[*e-1];
   list->tasks[*e-1] = aux;
   wmove(ui->main,0,0);
-  task_draw(ui->main, ui->cbdata, NULL, NULL, b, 0);
+  task_draw(ui->main, ui->cbdata[0], NULL, NULL, b, 0);
   (*p)--;(*e)--;
 }
 void op_reorder_down(struct UI* ui, int* p, int* e, int b) {
@@ -491,7 +493,7 @@ void op_reorder_down(struct UI* ui, int* p, int* e, int b) {
   list->tasks[*e] = list->tasks[*e+1];
   list->tasks[*e+1] = aux;
   wmove(ui->main,0,0);
-  task_draw(ui->main, ui->cbdata, NULL, NULL, b, 0);
+  task_draw(ui->main, ui->cbdata[0], NULL, NULL, b, 0);
   (*p)++;(*e)++;
 }
 void op_mark_task(struct UI* ui, int p, int e) {
@@ -528,6 +530,19 @@ int task_nav(struct UI* ui) {
   while (1) {
     int ch = wgetch(ui->main);
     switch (ch) {
+      case KEY_RESIZE: {
+        endwin();refresh();
+        int y, x;getmaxyx(stdscr, y, x);
+        clear();
+        mvaddstr(0, x/2-3, " ETODO ");refresh();
+        wresize(ui->main, y-2, x);
+        mvwin(ui->main, 1, 0);
+        wresize(ui->windows[1], 1, x);
+        mvwin(ui->windows[1], y-1, 0);
+        UI_draw(ui);
+        }
+        y = getmaxy(ui->main);
+        break;
       case KEY_DOWN:
         if (!list->size||e==list->size-1) break;
         if (p==y-1&&e!=list->size-1) {
@@ -611,8 +626,9 @@ int main() {
   WINDOW* winarr[2] = {taskwin, optwin};
   struct UI ui = UI_new(winarr,2,taskwin);
   UI_register(&ui, main_ui);
-  void* cbdata[3] = {&list}
-  UI_set_state(&ui, 0, &list);
+  int p=0; int e=0;
+  void* cbdata[3] = {&list, &p, &e};
+  UI_set_state(&ui, 0, cbdata);
   UI_draw(&ui);
   // handle key input
   // TODO: terminal resize
