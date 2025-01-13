@@ -1,17 +1,25 @@
 #include <ncurses.h>
 #include <stdio.h>
+#include <sys/poll.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <json.h>
+#include <poll.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include "nsread.h"
 #define C_AZUL 1
 #define C_ROJO 2
 #define C_BLANCO 3
 
-//typedef callback;
+int UNIXSOCK;
+
 struct Task {
   char* task;
   int state;
@@ -21,6 +29,12 @@ struct Task Task_new(char* name, int state, char* time) { struct Task task = {na
 void Task_edit(struct Task* task, char* taskname, int state, char* time) {task->task=taskname;task->state=state;task->time=time;}
 void Task_mark(struct Task* task) {task->state=!task->state;}
 
+struct DeviceList {
+  char** name;
+  char** address;
+  int* port;
+  int size;
+};
 struct List {
   struct Task* tasks;
   int size;
@@ -514,11 +528,178 @@ void op_mark_task(struct UI* ui, int p, int e) {
   }
 }
 
+void block_interface(struct UI* ui) {
+  // TODO: block on every interaction point.
+  // Hint: ampsread and wgetch
+  char sockbuff[4];
+  int y, x; getmaxyx(stdscr, y, x);
+  WINDOW* win = newwin(3, 46, y/2-1, x/2-23);
+  box(win, 0, 0);
+  mvwaddstr(win, 1, 1, "Synchronization in process, wait a moment...");
+  wrefresh(win);
+
+  struct pollfd pfd = {UNIXSOCK, POLLIN};
+  poll(&pfd, 1, -1);
+  read(UNIXSOCK, sockbuff, 4);
+  if (!strncmp(sockbuff, "DONE", 4)) {
+    // TODO: RECARGAR ESTRUCTURA JSON
+  }
+  delwin(win);
+  UI_bring_up(ui);
+}
+
+int devmenu(struct UI* ui, WINDOW* win, struct DeviceList* devli) {
+  int p = 0;
+  int e = 0;
+  int b = 0;
+  int y = getmaxy(win);
+  char sockbuff[4];
+  // create list of options
+  int list_size = devli->size+1;
+  char** list = malloc(sizeof(char*)*list_size);
+  for (int i=0; i<list_size-1; i++) {
+    list[i] = malloc(strlen(devli->name[i])+strlen(devli->address[i])+4);
+    strcpy(list[i], devli->name[i]);
+    strcat(list[i], " (");
+    strcat(list[i], devli->address[i]);
+    strcat(list[i], ")");
+  }
+  list[list_size-1] = "+ add new device";
+  int forcycles = list_size>=4 ? 4 : list_size;
+  for (int p=0; p<forcycles; p++) {
+    mvwaddstr(win, p, 3, list[p]);
+  }
+  p=0;
+  // the menu then:
+
+  wattron(win, COLOR_PAIR(C_BLANCO));
+  mvwaddstr(win, 0, 3, list[0]);
+  wattroff(win, COLOR_PAIR(C_BLANCO));
+
+  struct pollfd pfd[2] = {{0, POLLIN}, {UNIXSOCK, POLLIN}};
+  // TODO: menu is recycled, has to be edited.
+  while (1) {
+    wrefresh(win);
+    poll(pfd, (UNIXSOCK)?2:1, -1);
+    if (pfd[1].revents & POLLIN) { /*sync is taking place*/
+      read(UNIXSOCK, sockbuff, 4);
+      block_interface(ui);
+      continue;
+    }
+    int ch = wgetch(win);
+    switch (ch) { /*handle keys*/
+      case KEY_DOWN:
+        if (list_size-1 == 0||e==list_size-1) break;
+        if (p==y-1 && e!=list_size-1) { // TODO: Añadir scroll
+          b++;
+          mvwaddstr(win, p, 3, list[e]);
+          e++;
+          break;
+        }
+        wattron(win, COLOR_PAIR(C_BLANCO));
+        mvwaddstr(win, p, 3, list[e]);
+        wattroff(win, COLOR_PAIR(C_BLANCO));
+        continue;
+      case KEY_UP:
+        if (list_size-1 == 0||!e) break;
+        if (!p&&e) {
+          b--;
+          mvwaddstr(win, p, 3, list[e]);
+          e--;
+          break;
+        }
+        wattron(win, COLOR_PAIR(C_BLANCO));
+        mvwaddstr(win, p, 3, list[e]);
+        wattroff(win, COLOR_PAIR(C_BLANCO));
+        continue;
+      case 'D':
+        if (list_size-1 == 0) continue;
+        // op_del_task(ui, e);
+        // save_list(list);
+        if (list_size-1 == 0) continue;
+        if (e==list_size-1) {p--;e--;}
+        break;
+      case 10:
+        /*handle both add device and normal selection*/
+        if (e == list_size-1) { // add new device
+          WINDOW* dialog = newwin(7, 28, getmaxy(stdscr)/2-3, getmaxx(stdscr)/2-14);
+          box(dialog, 0, 0);
+          mvwaddstr(dialog, 0, 1, "Add device");
+          mvwaddstr(dialog, 2, 2, "Alias:");
+          mvwaddstr(dialog, 3, 2, "IP:");
+          mvwaddstr(dialog, 4, 2, "Port:");
+          wgetch(dialog);
+        } else { // select existing device from list
+          ;
+        }
+        continue;
+      case 27:
+        return 1;
+    }
+    if (list_size-1 == 0) continue;
+    wattron(win, COLOR_PAIR(C_BLANCO));
+    mvwaddstr(win, p, 3, list[e]);
+    wattroff(win, COLOR_PAIR(C_BLANCO));
+  }
+}
+
+int synclist(struct UI* ui) {
+  char* HOME = getenv("HOME");
+  size_t size = strlen("HOME")+29;
+  char* PATH = malloc(size+1); PATH[size]=0;
+  strcpy(PATH, HOME);
+  strcat(PATH, "/.local/share/etodo/devs.json");
+
+  int y,x; getmaxyx(stdscr, y, x);
+  struct List* list = ui->cbdata[0];
+  WINDOW* win = newwin(8,37,y/2-4,x/2-18);
+  box(win,0,0);
+  mvwaddstr(win, 0, 1, "List sync");
+  mvwaddstr(win, 2, 3, "Select a device to upload data.");
+  wrefresh(win);
+
+  // check file with devs
+  struct stat st;
+  struct DeviceList devli = {NULL, NULL, NULL, 0};
+  struct json_object* jobj;
+  FILE* F;
+  // if file exist read and parse
+  if (!stat(PATH, &st)) {
+    F = fopen(PATH, "r");
+    char* buff = malloc(st.st_size+1);
+    fread(buff, 1, st.st_size, F);
+    // parse here  {"Dev1": ["192.168.0.55", 4444], "dev2": ["127.0.0.1", 4444]}
+    jobj = json_tokener_parse(buff);
+    json_object_object_foreach(jobj, key, val) {
+      devli.name = realloc(devli.name, devli.size+1);
+      devli.address = realloc(devli.address, devli.size+1);
+      devli.port = realloc(devli.port, devli.size+1);
+      devli.name[size] = key;
+
+      devli.address[size] = json_object_get_string(json_object_array_get_idx(val, 0));
+      devli.port[size] = json_object_get_int(json_object_array_get_idx(val, 1));
+      devli.size++;
+    }
+    // cleanup
+    free(buff);
+  } else {
+    // TODO: Code for this case
+  }
+  // offer menu
+  WINDOW* menuwin = newwin(4, 35, y/2-1, x/2-17);
+  keypad(menuwin, 1);
+  wrefresh(menuwin);
+  devmenu(ui, menuwin, &devli);
+  wrefresh(win);
+  return 1;
+}
+
 int task_nav(struct UI* ui) {
   int p = 0;
   int e = 0;
   int b = 0;
   int y = getmaxy(ui->main);
+  char sockbuff[4];
   struct List* list = ui->cbdata[0];
   ui->cbdata[1] = &p;
   ui->cbdata[2] = &e;
@@ -527,7 +708,15 @@ int task_nav(struct UI* ui) {
     mvwaddstr(ui->main, 0, 5, list->tasks[0].task);
     wattroff(ui->main, COLOR_PAIR(C_BLANCO));
   }
+  struct pollfd pfd[2] = {{0, POLLIN}, {UNIXSOCK, POLLIN}};
   while (1) {
+    wrefresh(ui->main);
+    poll(pfd, (UNIXSOCK)?2:1, -1);
+    if (pfd[1].revents & POLLIN) {
+      read(UNIXSOCK, sockbuff, 4);
+      block_interface(ui);
+      continue;
+    }
     int ch = wgetch(ui->main);
     switch (ch) {
       case KEY_RESIZE: {
@@ -578,15 +767,18 @@ int task_nav(struct UI* ui) {
         op_ren_task(ui, e);
         save_list(list);
         break;
-      case 'o': // TODO: Reorder up
+      case 'o':
         if (!p&&e) {b--;p++;}
         op_reorder_up(ui, &p, &e, b);
         save_list(list);
         break;
-      case 'l': // TODO: Reorder down
+      case 'l':
         if (p==y-1&&e!=list->size-1) {b++;p--;}
         op_reorder_down(ui, &p, &e, b);
         save_list(list);
+        break;
+      case 'S':
+        synclist(ui);
         break;
       case 10:
         if (list->size) op_mark_task(ui, p, e);
@@ -603,8 +795,24 @@ int task_nav(struct UI* ui) {
 }
 
 int main() {
+  char* HOME = getenv("HOME");
+  size_t size = strlen(HOME)+24;
+  char* PATH = malloc(size+1); PATH[size]=0;
+  strcpy(PATH, HOME);
+  strcat(PATH, "/.local/share/etodo/sock");
+
+  UNIXSOCK = socket(AF_UNIX, SOCK_STREAM, 0);
+  fcntl(UNIXSOCK, F_SETFD, O_NONBLOCK);
+  struct sockaddr_un addr = {AF_UNIX};
+  printf("%p\n%p: %s\n",addr.sun_path, PATH, PATH);
+  strcpy(addr.sun_path, PATH);
+  if (connect(UNIXSOCK, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
+    UNIXSOCK = 0;
+  }
+
   struct json_object* data = data_loader();
   struct List list = list_from_json(data);
+
   // draw interface
   WINDOW* stdscr = initscr();
   start_color();
@@ -630,8 +838,7 @@ int main() {
   void* cbdata[3] = {&list, &p, &e};
   UI_set_state(&ui, 0, cbdata);
   UI_draw(&ui);
-  // handle key input
-  // TODO: terminal resize
+
   task_nav(&ui);
   endwin();
   return 0;
