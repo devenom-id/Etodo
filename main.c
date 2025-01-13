@@ -802,7 +802,8 @@ int main() {
   strcat(PATH, "/.local/share/etodo/sock");
 
   UNIXSOCK = socket(AF_UNIX, SOCK_STREAM, 0);
-  fcntl(UNIXSOCK, F_SETFD, O_NONBLOCK);
+  int sockflags = fcntl(UNIXSOCK, F_GETFL);
+  fcntl(UNIXSOCK, F_SETFL, sockflags|O_NONBLOCK);
   struct sockaddr_un addr = {AF_UNIX};
   printf("%p\n%p: %s\n",addr.sun_path, PATH, PATH);
   strcpy(addr.sun_path, PATH);
