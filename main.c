@@ -1,14 +1,20 @@
+#define _GNU_SOURCE
+#include <asm-generic/ioctls.h>
 #include <ncurses.h>
 #include <stdio.h>
 #include <sys/poll.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <string.h>
 #include <time.h>
 #include <json.h>
 #include <poll.h>
 #include <unistd.h>
+#include <signal.h>
+#include <errno.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <arpa/inet.h>
@@ -19,6 +25,83 @@
 #define C_BLANCO 3
 
 int UNIXSOCK;
+int flag=1;
+FILE* DEBUG=NULL;
+
+void resize(int signal) {
+  struct winsize ws;
+  ioctl(0, TIOCGWINSZ, &ws);
+  resizeterm(ws.ws_row, ws.ws_col);
+  flag=0;
+}
+
+int get_key() {
+  char ch[1];
+  read(0, ch, 1);
+  fprintf(DEBUG, "%d\n", ch[0]); fflush(DEBUG);
+  int key = ch[0];
+  if (ch[0] == 27) {
+    int attr = fcntl(0, F_GETFL);
+    fcntl(0, F_SETFL, O_NONBLOCK | attr);
+    int err = read(0, ch, 1);
+    fprintf(DEBUG, "%d\n", ch[0]); fflush(DEBUG);
+    if (err != -1 && (ch[0] == 79) || (ch[0] == 91)) {
+      read(0, ch, 1);
+      fprintf(DEBUG, "%d\n", ch[0]); fflush(DEBUG);
+      switch (ch[0]) {
+        case 65:
+          key=KEY_UP;
+          break;
+        case 66:
+          key=KEY_DOWN;
+          break;
+        case 67:
+          key=KEY_RIGHT;
+          break;
+        case 68:
+          key=KEY_LEFT;
+          break;
+      }
+    }
+    else {return ch[0];}
+    fcntl(0, F_SETFL, attr);
+  }
+  return key;
+}
+
+int chcount(char* s, int ch) {
+  int n=0;
+  for (int i=0;i<strlen(s);i++) {if (s[i]==ch) n++;}
+  return n;
+}
+
+int validate_ip(char* ip) {
+  ip=strdup(ip);
+  char* ptr=ip;
+  if (!ip || !strlen(ip)) return 1;
+  if (chcount(ip, '.') != 3) {return 0;}
+  int ip_size = strlen(ip);
+  for (int i=0; i<ip_size; i++) {
+    if (ip[i]=='.') {ip[i]=0;}
+  }
+  for (int i=0;i<4;i++) {
+    int size = strlen(ip);
+    if (!size) return 0;
+    for (int e=0;e<size;e++) {if (!isdigit(ip[e])) return 0;}
+    if (atoi(ip) > 255) return 0;
+    ip+=size+1;
+  }
+  free(ptr);
+  return 1;
+}
+
+int validate_port(char* port) {
+  if (!port || !strlen(port)) return -1;
+  for (int e=0;e<strlen(port);e++) {if (!isdigit(port[e])) return -1;}
+  int num = atoi(port);
+  if (num > 65535) return -2;
+  return 1;
+}
 
 struct Task {
   char* task;
@@ -548,7 +631,7 @@ void block_interface(struct UI* ui) {
   UI_bring_up(ui);
 }
 
-int devmenu(struct UI* ui, WINDOW* win, struct DeviceList* devli) {
+int devmenu(struct UI* ui, WINDOW* container, WINDOW* win, struct DeviceList* devli, json_object* jobj, void** data) {
   int p = 0;
   int e = 0;
   int b = 0;
@@ -578,6 +661,9 @@ int devmenu(struct UI* ui, WINDOW* win, struct DeviceList* devli) {
 
   struct pollfd pfd[2] = {{0, POLLIN}, {UNIXSOCK, POLLIN}};
   // TODO: menu is recycled, has to be edited.
+  char** alias = data[0]; *alias = NULL;
+  char** ip = data[1]; *ip = NULL;
+  char** port = data[2]; *port = NULL;
   while (1) {
     wrefresh(win);
     poll(pfd, (UNIXSOCK)?2:1, -1);
@@ -616,19 +702,158 @@ int devmenu(struct UI* ui, WINDOW* win, struct DeviceList* devli) {
         if (list_size-1 == 0) continue;
         // op_del_task(ui, e);
         // save_list(list);
-        if (list_size-1 == 0) continue;
+        // TODO: DELETE
+        //if (list_size-1 == 0) continue;
         if (e==list_size-1) {p--;e--;}
         break;
       case 10:
         /*handle both add device and normal selection*/
         if (e == list_size-1) { // add new device
-          WINDOW* dialog = newwin(7, 28, getmaxy(stdscr)/2-3, getmaxx(stdscr)/2-14);
+          *alias = calloc(26,1);
+          *ip = calloc(16,1);
+          *port = calloc(6,1);
+          WINDOW* dialog = newwin(7, 32, getmaxy(stdscr)/2-3, getmaxx(stdscr)/2-16);
+          keypad(dialog,1);
           box(dialog, 0, 0);
           mvwaddstr(dialog, 0, 1, "Add device");
           mvwaddstr(dialog, 2, 2, "Alias:");
           mvwaddstr(dialog, 3, 2, "IP:");
           mvwaddstr(dialog, 4, 2, "Port:");
-          wgetch(dialog);
+          mvwaddstr(dialog, 5, 12, "[OK]");
+          int opts[4][3] = {
+            {2,9,20},
+            {3,6,15},
+            {4,8,5},
+            {5, 12, 4}
+          };
+          char buffer[26] = {0};
+          wattron(dialog, COLOR_PAIR(C_BLANCO));
+          mvwinnstr(dialog, opts[0][0], opts[0][1], buffer, opts[0][2]);
+          mvwaddstr(dialog, opts[0][0], opts[0][1], buffer);
+          wattroff(dialog, COLOR_PAIR(C_BLANCO));
+          int ee=0;
+          WINDOW* twin;
+          while (1) {
+            int ch = wgetch(dialog);
+            switch (ch) {
+              case KEY_DOWN:
+                if (ee==3) continue;
+                mvwinnstr(dialog, opts[ee][0], opts[ee][1], buffer, opts[ee][2]);
+                mvwaddstr(dialog, opts[ee][0], opts[ee][1], buffer);
+                wattron(dialog, COLOR_PAIR(C_BLANCO));
+                mvwinnstr(dialog, opts[ee+1][0], opts[ee+1][1], buffer, opts[ee+1][2]);
+                mvwaddstr(dialog, opts[ee+1][0], opts[ee+1][1], buffer);
+                wattroff(dialog, COLOR_PAIR(C_BLANCO));
+                ee++;
+                break;
+              case KEY_UP:
+                if (!ee) continue;
+                mvwinnstr(dialog, opts[ee][0], opts[ee][1], buffer, opts[ee][2]);
+                mvwaddstr(dialog, opts[ee][0], opts[ee][1], buffer);
+                wattron(dialog, COLOR_PAIR(C_BLANCO));
+                mvwinnstr(dialog, opts[ee-1][0], opts[ee-1][1], buffer, opts[ee-1][2]);
+                mvwaddstr(dialog, opts[ee-1][0], opts[ee-1][1], buffer);
+                wattroff(dialog, COLOR_PAIR(C_BLANCO));
+                ee--;
+                break;
+              case 27:
+                free(*alias); *alias = NULL;
+                free(*ip); *ip = NULL;
+                free(*port); *port = NULL;
+                delwin(dialog);
+                touchwin(container);
+                touchwin(win);
+                wrefresh(container);
+                wrefresh(win);
+                goto devmenu_out;
+              case 10:
+                switch (ee) {
+                  case 0:
+                    nsread(dialog, alias, opts[0][0], opts[0][1], 20, 30);
+                    break;
+                  case 1:
+                    nsread(dialog, ip, opts[1][0], opts[1][1], 15, 15);
+                    break;
+                  case 2:
+                    nsread(dialog, port, opts[2][0], opts[2][1], 5, 5);
+                    break;
+                  case 3:
+                    if (!strlen(*ip) || !strlen(*alias) || !strlen(*port)) {
+                      twin = newwin(3, 35, getmaxy(stdscr)/2-1, getmaxx(stdscr)/2-17);
+                      box(twin,0,0);
+                      mvwaddstr(twin, 1, 2, "Todos los campos son obligatorios");
+                      wrefresh(twin);
+                      napms(2000);
+                      delwin(twin);
+                      free(*alias); *alias = NULL;
+                      free(*ip); *ip = NULL;
+                      free(*port); *port = NULL;
+                    }
+                    else if (!validate_ip(*ip)) {
+                      twin = newwin(3, 35, getmaxy(stdscr)/2-1, getmaxx(stdscr)/2-17);
+                      box(twin,0,0);
+                      mvwaddstr(twin, 1, 2, "The IP specified is invalid");
+                      wrefresh(twin);
+                      napms(2000);
+                      delwin(twin);
+                      free(*alias); *alias = NULL;
+                      free(*ip); *ip = NULL;
+                      free(*port); *port = NULL;
+                    }
+                    else {
+                      switch (validate_port(*port)) {
+                        case -1:
+                          twin = newwin(3, 35, getmaxy(stdscr)/2-1, getmaxx(stdscr)/2-17);
+                          box(twin,0,0);
+                          mvwaddstr(twin, 1, 2, "The port specified is invalid");
+                          wrefresh(twin);
+                          napms(2000);
+                          delwin(twin);
+                          free(*alias); *alias = NULL;
+                          free(*ip); *ip = NULL;
+                          free(*port); *port = NULL;
+                          break;
+                        case -2:
+                          twin = newwin(3, 35, getmaxy(stdscr)/2-1, getmaxx(stdscr)/2-17);
+                          box(twin,0,0);
+                          mvwaddstr(twin, 1, 2, "Port number is greater than max");
+                          wrefresh(twin);
+                          napms(2000);
+                          delwin(twin);
+                          free(*alias); *alias = NULL;
+                          free(*ip); *ip = NULL;
+                          free(*port); *port = NULL;
+                          break;
+                      }
+                    }
+                    delwin(dialog);
+                    touchwin(container);
+                    touchwin(win);
+                    wrefresh(container);
+                    wrefresh(win);
+
+                    list_size++;
+                    list = realloc(list, sizeof(char*)*list_size);
+                    list[list_size-2] = malloc(strlen(*alias)+strlen(*ip)+4);
+                    strcpy(list[list_size-2], *alias);
+                    strcat(list[list_size-2], "( ");
+                    strcat(list[list_size-2], *ip);
+                    strcat(list[list_size-2], ")");
+                    list[list_size-1] = "+ add new device";
+
+                    // TODO: SYNC WITH JSON
+                    ;
+
+                    p=0; e=0;
+                    goto devmenu_out;
+                }
+                wattron(dialog, COLOR_PAIR(C_BLANCO));
+                mvwinnstr(dialog, opts[ee][0], opts[ee][1], buffer, opts[ee][2]);
+                mvwaddstr(dialog, opts[ee][0], opts[ee][1], buffer);
+                wattroff(dialog, COLOR_PAIR(C_BLANCO));
+                break;
+            }
+          }
         } else { // select existing device from list
           ;
         }
@@ -636,16 +861,17 @@ int devmenu(struct UI* ui, WINDOW* win, struct DeviceList* devli) {
       case 27:
         return 1;
     }
-    if (list_size-1 == 0) continue;
-    wattron(win, COLOR_PAIR(C_BLANCO));
-    mvwaddstr(win, p, 3, list[e]);
-    wattroff(win, COLOR_PAIR(C_BLANCO));
+    devmenu_out:
+      wattron(win, COLOR_PAIR(C_BLANCO));
+      mvwaddstr(win, p, 3, list[e]);
+      wattroff(win, COLOR_PAIR(C_BLANCO));
+      touchwin(win); wrefresh(win);
   }
 }
 
 int synclist(struct UI* ui) {
   char* HOME = getenv("HOME");
-  size_t size = strlen("HOME")+29;
+  size_t size = strlen(HOME)+29;
   char* PATH = malloc(size+1); PATH[size]=0;
   strcpy(PATH, HOME);
   strcat(PATH, "/.local/share/etodo/devs.json");
@@ -653,6 +879,7 @@ int synclist(struct UI* ui) {
   int y,x; getmaxyx(stdscr, y, x);
   struct List* list = ui->cbdata[0];
   WINDOW* win = newwin(8,37,y/2-4,x/2-18);
+  keypad(win, 1);
   box(win,0,0);
   mvwaddstr(win, 0, 1, "List sync");
   mvwaddstr(win, 2, 3, "Select a device to upload data.");
@@ -666,18 +893,18 @@ int synclist(struct UI* ui) {
   // if file exist read and parse
   if (!stat(PATH, &st)) {
     F = fopen(PATH, "r");
-    char* buff = malloc(st.st_size+1);
+    char* buff = malloc(st.st_size+1); buff[st.st_size]=0;
     fread(buff, 1, st.st_size, F);
     // parse here  {"Dev1": ["192.168.0.55", 4444], "dev2": ["127.0.0.1", 4444]}
     jobj = json_tokener_parse(buff);
     json_object_object_foreach(jobj, key, val) {
-      devli.name = realloc(devli.name, devli.size+1);
-      devli.address = realloc(devli.address, devli.size+1);
-      devli.port = realloc(devli.port, devli.size+1);
-      devli.name[size] = key;
+      devli.name = realloc(devli.name, (devli.size+1)*8);
+      devli.address = realloc(devli.address, (devli.size+1)*8);
+      devli.port = realloc(devli.port, (devli.size+1)*8);
 
-      devli.address[size] = json_object_get_string(json_object_array_get_idx(val, 0));
-      devli.port[size] = json_object_get_int(json_object_array_get_idx(val, 1));
+      devli.name[devli.size] = key;
+      devli.address[devli.size] = json_object_get_string(json_object_array_get_idx(val, 0));
+      devli.port[devli.size] = json_object_get_int(json_object_array_get_idx(val, 1));
       devli.size++;
     }
     // cleanup
@@ -689,8 +916,17 @@ int synclist(struct UI* ui) {
   WINDOW* menuwin = newwin(4, 35, y/2-1, x/2-17);
   keypad(menuwin, 1);
   wrefresh(menuwin);
-  devmenu(ui, menuwin, &devli);
+  char* alias = NULL;
+  char* ip = NULL;
+  char* port = NULL;
+  void* data[] = {&alias, &ip, &port};
+  devmenu(ui, win, menuwin, &devli, jobj, data);
+  // HERE WILL TRY TO CONNECT
+  // ...
   wrefresh(win);
+  delwin(win);
+  delwin(menuwin);
+  UI_bring_up(ui);
   return 1;
 }
 
@@ -712,26 +948,33 @@ int task_nav(struct UI* ui) {
   while (1) {
     wrefresh(ui->main);
     poll(pfd, (UNIXSOCK)?2:1, -1);
+    if (!flag) {
+      flag=1;
+      endwin();refresh();
+      int y, x;getmaxyx(stdscr, y, x);
+      clear();
+      mvaddstr(0, x/2-3, " ETODO ");refresh();
+      wresize(ui->main, y-2, x);
+      mvwin(ui->main, 1, 0);
+      wresize(ui->windows[1], 1, x);
+      mvwin(ui->windows[1], y-1, 0);
+      UI_draw(ui);
+      y = getmaxy(ui->main);
+      if (list->size) {
+        wattron(ui->main, COLOR_PAIR(C_BLANCO));
+        mvwaddstr(ui->main, p, 5, list->tasks[e].task);
+        wattroff(ui->main, COLOR_PAIR(C_BLANCO));
+      }
+      continue;
+    }
     if (pfd[1].revents & POLLIN) {
       read(UNIXSOCK, sockbuff, 4);
       block_interface(ui);
       continue;
     }
-    int ch = wgetch(ui->main);
+    int ch = get_key();
+    // int ch = wgetch(ui->main);
     switch (ch) {
-      case KEY_RESIZE: {
-        endwin();refresh();
-        int y, x;getmaxyx(stdscr, y, x);
-        clear();
-        mvaddstr(0, x/2-3, " ETODO ");refresh();
-        wresize(ui->main, y-2, x);
-        mvwin(ui->main, 1, 0);
-        wresize(ui->windows[1], 1, x);
-        mvwin(ui->windows[1], y-1, 0);
-        UI_draw(ui);
-        }
-        y = getmaxy(ui->main);
-        break;
       case KEY_DOWN:
         if (!list->size||e==list->size-1) break;
         if (p==y-1&&e!=list->size-1) {
@@ -795,6 +1038,8 @@ int task_nav(struct UI* ui) {
 }
 
 int main() {
+  DEBUG = fopen("log", "w");
+  signal(SIGWINCH, resize);
   char* HOME = getenv("HOME");
   size_t size = strlen(HOME)+24;
   char* PATH = malloc(size+1); PATH[size]=0;
@@ -805,7 +1050,6 @@ int main() {
   int sockflags = fcntl(UNIXSOCK, F_GETFL);
   fcntl(UNIXSOCK, F_SETFL, sockflags|O_NONBLOCK);
   struct sockaddr_un addr = {AF_UNIX};
-  printf("%p\n%p: %s\n",addr.sun_path, PATH, PATH);
   strcpy(addr.sun_path, PATH);
   if (connect(UNIXSOCK, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
     UNIXSOCK = 0;
