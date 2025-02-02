@@ -675,7 +675,8 @@ int devmenu(struct UI* ui, WINDOW* container, WINDOW* win, struct DeviceList* de
     int ch = wgetch(win);
     switch (ch) { /*handle keys*/
       case KEY_DOWN:
-        if (list_size-1 == 0||e==list_size-1) break;
+        fputs("Key down on sync menu", DEBUG);
+        if (list_size-1 == 0||e==list_size-1) {fputs("Breaking..",DEBUG);break;}
         if (p==y-1 && e!=list_size-1) { // TODO: Añadir scroll
           b++;
           mvwaddstr(win, p, 3, list[e]);
@@ -706,7 +707,7 @@ int devmenu(struct UI* ui, WINDOW* container, WINDOW* win, struct DeviceList* de
         //if (list_size-1 == 0) continue;
         if (e==list_size-1) {p--;e--;}
         break;
-      case 10:
+      case 13:
         /*handle both add device and normal selection*/
         if (e == list_size-1) { // add new device
           *alias = calloc(26,1);
@@ -973,7 +974,6 @@ int task_nav(struct UI* ui) {
       continue;
     }
     int ch = get_key();
-    // int ch = wgetch(ui->main);
     switch (ch) {
       case KEY_DOWN:
         if (!list->size||e==list->size-1) break;
@@ -1023,7 +1023,7 @@ int task_nav(struct UI* ui) {
       case 'S':
         synclist(ui);
         break;
-      case 10:
+      case 13:
         if (list->size) op_mark_task(ui, p, e);
         save_list(list);
         continue;
