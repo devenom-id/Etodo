@@ -23,10 +23,9 @@ json_object* load_data_from_json() {
         path[path_size+13]=0;
         mkdir(path, 0755);
         path[path_size+13]='/';
-        path[path_size+20]=0;
+        path[path_size+19]=0;
         mkdir(path, 0755);
-        path[path_size+20]='/';
-        fclose(F);
+        path[path_size+19]='/';
         F = fopen(path, "w");
         fputs("{}", F);
         fclose(F);
@@ -36,6 +35,7 @@ json_object* load_data_from_json() {
         struct stat st;
         stat(path, &st);
         buffer = malloc(st.st_size+1);
+        fread(buffer, 1, st.st_size, F);
     }
 
     json_object* jobj = json_tokener_parse(buffer);
