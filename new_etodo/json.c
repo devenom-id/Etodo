@@ -59,3 +59,14 @@ void write_data_to_json(json_object* jobj) {
     free(path);
     free((void*)buffer);
 }
+
+int json_get_keys(json_object* jobj, char*** rarr) {
+    *rarr = malloc(sizeof(char*));
+    int i=0;
+    json_object_object_foreach(jobj, key, val) {
+        (*rarr)[i] = key;
+        i++;
+        *rarr = realloc(*rarr, sizeof(char*)*(i+1));
+    }
+    return i;
+}
