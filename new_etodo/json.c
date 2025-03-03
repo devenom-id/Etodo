@@ -36,6 +36,7 @@ json_object* load_data_from_json() {
         stat(path, &st);
         buffer = malloc(st.st_size+1);
         fread(buffer, 1, st.st_size, F);
+        buffer[st.st_size] = 0;
     }
 
     json_object* jobj = json_tokener_parse(buffer);
