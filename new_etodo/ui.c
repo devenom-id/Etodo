@@ -235,19 +235,17 @@ void list_interaction(WINDOW* win, json_object* jobj, char*** keys, int* keys_si
                 wattroff(win, COLOR_PAIR(C_BLANCO));
                 break;
             case 27:
-                // exit
                 return;
             case 10:
                 // mark
                 break;
             case 'a':
-                // add task
                 ui_add_task(win, jobj, keys, keys_size);
                 werase(win);
                 list_tasks(win, jobj, *keys, *keys_size);
                 break;
             case 'D':
-                // delete task
+                // Consider adding wdeleteln(3)
                 if (!*keys_size) continue;
                 del_task(jobj, keys, keys_size, e);
                 werase(win);
@@ -255,8 +253,7 @@ void list_interaction(WINDOW* win, json_object* jobj, char*** keys, int* keys_si
                 if (e==*keys_size) {p--;e--;}
                 break;
             case 'e':
-                // edit task
-                if (!*keys_size) continue;
+                {if (!*keys_size) continue;
                 ui_edit_task(win, jobj, *keys, *keys_size, e);
                 wmove(win, p, 0); wclrtoeol(win);
                 mvwaddstr(win, p, 0, "( )");
@@ -267,16 +264,47 @@ void list_interaction(WINDOW* win, json_object* jobj, char*** keys, int* keys_si
                 if (json_object_get_int(json_object_array_get_idx(arr, 0))) {
                     mvwaddch(win, p, 1, 'x'); mvwaddstr(win, p, x-5, json_object_get_string(json_object_array_get_idx(arr, 1)));
                 }
-                break;
+                break;}
             case 'l':
-                if (!*keys_size) continue;
-                // put down
+                // ASAN: HEAP-USE-AFTER-FREE DETECTED!!! FIXME IMMEDIATELY
+                {if (!*keys_size || e == (*keys_size-1)) continue;
+                wmove(win,p,0);wclrtoeol(win);
+                mvwaddstr(win, p, 0, "( )");
+                mvwaddstr(win, p, 4, (*keys)[e+1]);
+                json_object* arr = json_object_object_get(jobj, (*keys)[e+1]);
+                if (json_object_get_int(json_object_array_get_idx(arr, 0))) {
+                    mvwaddch(win, p, 1, 'x'); mvwaddstr(win, p, x-5, json_object_get_string(json_object_array_get_idx(arr, 1)));
+                }
+                wmove(win,p+1,0);wclrtoeol(win);
+                mvwaddstr(win, p+1, 0, "( )");
+                mvwaddstr(win, p+1, 4, (*keys)[e]);
+                arr = json_object_object_get(jobj, (*keys)[e]);
+                if (json_object_get_int(json_object_array_get_idx(arr, 0))) {
+                    mvwaddch(win, p+1, 1, 'x'); mvwaddstr(win, p+1, x-5, json_object_get_string(json_object_array_get_idx(arr, 1)));
+                }
+                move_task_down(e, jobj, *keys, *keys_size);
+                p++; e++;
                 // check if in last element and check if no elements|same in other cases
-                break;
+                break;}
             case 'o':
-                if (!*keys_size) continue;
-                // put up
-                break;
+                {if (!*keys_size || !e) continue;
+                wmove(win,p,0);wclrtoeol(win);
+                mvwaddstr(win, p, 0, "( )");
+                mvwaddstr(win, p, 4, (*keys)[e-1]);
+                json_object* arr = json_object_object_get(jobj, (*keys)[e-1]);
+                if (json_object_get_int(json_object_array_get_idx(arr, 0))) {
+                    mvwaddch(win, p, 1, 'x'); mvwaddstr(win, p, x-5, json_object_get_string(json_object_array_get_idx(arr, 1)));
+                }
+                wmove(win,p-1,0);wclrtoeol(win);
+                mvwaddstr(win, p-1, 0, "( )");
+                mvwaddstr(win, p-1, 4, (*keys)[e]);
+                arr = json_object_object_get(jobj, (*keys)[e]);
+                if (json_object_get_int(json_object_array_get_idx(arr, 0))) {
+                    mvwaddch(win, p-1, 1, 'x'); mvwaddstr(win, p-1, x-5, json_object_get_string(json_object_array_get_idx(arr, 1)));
+                }
+                move_task_up(e, jobj, *keys, *keys_size);
+                p--; e--;
+                break;}
             case 'S':
                 // synchronize
                 break;
