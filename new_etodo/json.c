@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include "debug.h"
 
 // carga de tareas, dumpear archivo
 
@@ -47,7 +48,9 @@ json_object* load_data_from_json() {
 }
 
 void write_data_to_json(json_object* jobj) {
+    pprint("jobj", jobj);
     const char* buffer = json_object_to_json_string_ext(jobj, JSON_C_TO_STRING_PRETTY);
+    pprint("buffer", (void*)buffer);
     size_t buffer_size = strlen(buffer);
     char* path = strdup(getenv("HOME"));
     size_t path_size = strlen(path);
@@ -58,7 +61,6 @@ void write_data_to_json(json_object* jobj) {
     fclose(F);
     /*heap cleanup*/
     free(path);
-    free((void*)buffer);
 }
 
 int json_get_keys(json_object* jobj, char*** rarr) {
