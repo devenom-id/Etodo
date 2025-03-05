@@ -2,6 +2,7 @@
 #include <json-c/json.h>
 #include <json-c/json_object.h>
 #include <json-c/linkhash.h>
+#include "debug.h"
 
 void add_task(char* name, int done, char* time, json_object* jobj, char*** keys, int* keys_size) {
     json_object* arr = json_object_new_array();
@@ -31,6 +32,8 @@ void edit_task(int index, char* name, int done, char* time, json_object* jobj, c
 }
 void move_task_up(int index, json_object* jobj, char** keys, int keys_size) {
     struct lh_table* table = json_object_get_object(jobj);
+    pprint("table", table);
+    pprint("keys", keys);
     if (index==1) {
         struct lh_entry* entry = table->head;
         table->head = entry->next;
@@ -39,6 +42,7 @@ void move_task_up(int index, json_object* jobj, char** keys, int keys_size) {
     }
     else {
         struct lh_entry* entry = lh_table_lookup_entry(table, keys[index-2]); // A
+        pprint("entry", entry);
         struct lh_entry* sup = entry->next;
         entry->next = entry->next->next; // A->C
         sup->next = entry->next->next; // B->D
