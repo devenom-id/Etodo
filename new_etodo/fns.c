@@ -1,4 +1,5 @@
 #include <ncurses.h>
+#include <stdio.h>
 #include "fns.h"
 
 void mark_done(WINDOW* win, int* done) {
