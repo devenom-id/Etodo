@@ -6,9 +6,12 @@
 #include <ncurses.h>
 #include "json.h"
 #include "ui.h"
+#include "debug.h"
 #include "ops.h"
+#include "sync.h"
 
-int main() {
+/*int main() {
+    open_debug_file();
     initscr();
     start_color();
     use_default_colors();
@@ -22,17 +25,16 @@ int main() {
     list_tasks(stdscr, jobj, rarr, rarr_size);
     list_interaction(stdscr, jobj, &rarr, &rarr_size);
     endwin();
-}
+}*/
 
 
-/*int main() {
+int main() {
     json_object* jobj = load_data_from_json();
     char** rarr;
     int rarr_size = json_get_keys(jobj, &rarr);
+    transfer_list(jobj, "192.168.1.15", 4444);
     puts(json_object_to_json_string_ext(jobj, JSON_C_TO_STRING_PRETTY));
-    move_task_down(0, jobj, rarr, rarr_size);
-    puts(json_object_to_json_string_ext(jobj, JSON_C_TO_STRING_PRETTY));
-}*/
+}
 
 
 /*int main() {
