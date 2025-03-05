@@ -266,7 +266,6 @@ void list_interaction(WINDOW* win, json_object* jobj, char*** keys, int* keys_si
                 }
                 break;}
             case 'l':
-                // ASAN: HEAP-USE-AFTER-FREE DETECTED!!! FIXME IMMEDIATELY
                 {if (!*keys_size || e == (*keys_size-1)) continue;
                 wmove(win,p,0);wclrtoeol(win);
                 mvwaddstr(win, p, 0, "( )");
